@@ -83,8 +83,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           const updatedGame = payload.new as Game
           setGame(prev => prev ? { ...prev, ...updatedGame } : null)
           
-          if (updatedGame.status === 'question' && updatedGame.current_question_index !== game.current_question_index) {
-            // New question
+          if (updatedGame.status === 'question') {
             setCurrentQuestion(questions[updatedGame.current_question_index])
             setSelectedOption(null)
             setHasAnswered(false)
@@ -229,13 +228,18 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         {game.status === 'question' && currentQuestion && !hasAnswered && (
           <div className="w-full max-w-lg">
             {/* Timer */}
-            <div className="text-center mb-6">
+            <div className="text-center mb-4">
               <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary ${
                 timeLeft !== null && timeLeft <= 5 ? 'text-primary animate-timer-pulse' : ''
               }`}>
                 <Clock className="h-5 w-5" />
                 <span className="text-2xl font-bold font-mono">{timeLeft ?? '--'}</span>
               </div>
+            </div>
+
+            {/* Question text */}
+            <div className="bg-card/50 border border-border rounded-xl px-5 py-4 mb-5 text-center">
+              <p className="text-lg font-semibold">{currentQuestion.question_text}</p>
             </div>
 
             {/* Options */}
