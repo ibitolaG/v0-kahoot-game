@@ -74,6 +74,8 @@ ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "questions_select" ON public.questions FOR SELECT USING (
   EXISTS (SELECT 1 FROM public.quizzes WHERE quizzes.id = questions.quiz_id AND quizzes.host_id = auth.uid())
 );
+-- Allow players (unauthenticated) to read questions during gameplay
+CREATE POLICY "questions_select_public" ON public.questions FOR SELECT USING (true);
 CREATE POLICY "questions_insert" ON public.questions FOR INSERT WITH CHECK (
   EXISTS (SELECT 1 FROM public.quizzes WHERE quizzes.id = questions.quiz_id AND quizzes.host_id = auth.uid())
 );

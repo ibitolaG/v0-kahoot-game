@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -9,15 +9,15 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Zap, ArrowLeft, Plus, Trash2, Save, GripVertical } from 'lucide-react'
+import { Zap, ArrowLeft, Plus, Trash2, Save, GripVertical, Upload, Download } from 'lucide-react'
 import type { Quiz, Question, QuestionOption } from '@/lib/types'
 
 interface QuizBuilderProps {
@@ -67,7 +67,8 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
   )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const router = useRouter()
   const supabase = createClient()
 
@@ -119,6 +120,94 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
       ]
     }
     setQuestions(newQuestions)
+  }
+
+  const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const raw = JSON.parse(ev.target?.result as string)
+        // Support both { title, description, questions: [...] } and a bare array
+        const isWrapped = !Array.isArray(raw) && Array.isArray(raw.questions)
+        const rawQuestions: unknown[] = isWrapped ? raw.questions : raw
+
+        if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+          setError('JSON must contain a non-empty "questions" array.')
+          return
+        }
+
+        const parsed: QuestionForm[] = rawQuestions.map((q: unknown, i: number) => {
+          const qObj = q as Record<string, unknown>
+          if (!qObj.question_text || typeof qObj.question_text !== 'string') {
+            throw new Error(`Question ${i + 1} is missing "question_text"`)
+          }
+          const type: 'multiple_choice' | 'true_false' =
+            qObj.question_type === 'true_false' ? 'true_false' : 'multiple_choice'
+          const options: QuestionOption[] =
+            type === 'true_false'
+              ? [...TRUE_FALSE_OPTIONS]
+              : (Array.isArray(qObj.options) ? qObj.options : []).map((o: unknown) => {
+                  const oObj = o as Record<string, unknown>
+                  return { text: String(oObj.text ?? ''), isCorrect: Boolean(oObj.isCorrect) }
+                })
+          return {
+            question_text: qObj.question_text,
+            question_type: type,
+            options,
+            time_limit: typeof qObj.time_limit === 'number' ? qObj.time_limit : 20,
+            points: typeof qObj.points === 'number' ? qObj.points : 1000,
+          }
+        })
+
+        if (isWrapped) {
+          if (raw.title) setTitle(raw.title)
+          if (raw.description) setDescription(raw.description)
+        }
+        setQuestions(parsed)
+        setError(null)
+      } catch (err) {
+        setError(`Invalid JSON: ${err instanceof Error ? err.message : 'unknown error'}`)
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  const downloadTemplate = () => {
+    const template = {
+      title: 'My Quiz Title',
+      description: 'Optional description',
+      questions: [
+        {
+          question_text: 'What is the capital of France?',
+          question_type: 'multiple_choice',
+          options: [
+            { text: 'Berlin', isCorrect: false },
+            { text: 'Paris', isCorrect: true },
+            { text: 'Madrid', isCorrect: false },
+            { text: 'Rome', isCorrect: false },
+          ],
+          time_limit: 20,
+          points: 1000,
+        },
+        {
+          question_text: 'The Earth is flat.',
+          question_type: 'true_false',
+          time_limit: 15,
+          points: 500,
+        },
+      ],
+    }
+    const blob = new Blob([JSON.stringify(template, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'quiz-template.json'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const handleSave = async () => {
@@ -270,10 +359,27 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-semibold">Questions</h2>
-            <Button variant="outline" onClick={addQuestion}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Question
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={downloadTemplate} title="Download JSON template">
+                <Download className="mr-2 h-4 w-4" />
+                Template
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import JSON
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,application/json"
+                className="hidden"
+                onChange={handleJsonImport}
+              />
+              <Button variant="outline" onClick={addQuestion}>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Question
+              </Button>
+            </div>
           </div>
 
           {questions.map((question, qIndex) => (
