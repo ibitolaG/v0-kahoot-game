@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, use, useCallback } from 'react'
+import { useState, useEffect, use, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,20 +11,25 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   const { pin } = use(params)
   const searchParams = useSearchParams()
   const playerId = searchParams.get('player')
-  
+
   const [game, setGame] = useState<Game | null>(null)
   const [player, setPlayer] = useState<Player | null>(null)
   const [questions, setQuestions] = useState<Question[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState<Question | null>(null)
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [hasAnswered, setHasAnswered] = useState(false)
   const [lastAnswer, setLastAnswer] = useState<{ correct: boolean; points: number } | null>(null)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
-  
+
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useRef(createClient()).current
+
+  // Derive currentQuestion from game state — no stale closure possible
+  const currentQuestion: Question | null = game
+    ? (questions[game.current_question_index] ?? null)
+    : null
 
   // Initial data fetch
   useEffect(() => {
@@ -34,57 +39,58 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     }
 
     const fetchData = async () => {
-      // Get game
-      const { data: gameData } = await supabase
+      const { data: gameData, error: gameError } = await supabase
         .from('games')
         .select('*, quiz:quizzes(*, questions(*))')
         .eq('pin', pin.toUpperCase())
         .single()
 
-      if (!gameData) {
-        router.push('/')
+      if (gameError || !gameData) {
+        setError(`Game not found (${gameError?.message ?? 'no data'})`)
+        setLoading(false)
         return
       }
 
-      // Get player
-      const { data: playerData } = await supabase
+      const { data: playerData, error: playerError } = await supabase
         .from('players')
         .select('*')
         .eq('id', playerId)
         .single()
 
-      if (!playerData) {
+      if (playerError || !playerData) {
         router.push(`/play/${pin}`)
         return
       }
 
-      const sortedQuestions = gameData.quiz?.questions?.sort((a: Question, b: Question) => a.order_index - b.order_index) || []
-      
+      const sortedQuestions: Question[] =
+        (gameData.quiz?.questions ?? []).sort(
+          (a: Question, b: Question) => a.order_index - b.order_index
+        )
+
       setGame(gameData)
       setPlayer(playerData)
       setQuestions(sortedQuestions)
-      setCurrentQuestion(sortedQuestions[gameData.current_question_index])
       setLoading(false)
     }
 
     fetchData()
-  }, [playerId, pin, supabase, router])
+  }, [playerId, pin]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Subscribe to game updates
   useEffect(() => {
     if (!game) return
 
+    const gameId = game.id
+
     const channel = supabase
-      .channel('game-updates')
+      .channel(`game-${gameId}`)
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${game.id}` },
+        { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         (payload) => {
           const updatedGame = payload.new as Game
           setGame(prev => prev ? { ...prev, ...updatedGame } : null)
-          
           if (updatedGame.status === 'question') {
-            setCurrentQuestion(questions[updatedGame.current_question_index])
             setSelectedOption(null)
             setHasAnswered(false)
             setLastAnswer(null)
@@ -93,31 +99,27 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       )
       .on(
         'postgres_changes',
-        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${game.id}` },
-        () => {
-          // Game ended
-          router.push('/')
-        }
+        { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
+        () => router.push('/')
       )
       .subscribe()
 
-    // Subscribe to player updates for scoreboard
     const playersChannel = supabase
-      .channel('players-updates')
+      .channel(`players-${gameId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${game.id}` },
+        { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameId}` },
         async () => {
           const { data } = await supabase
             .from('players')
             .select('*')
-            .eq('game_id', game.id)
+            .eq('game_id', gameId)
             .order('score', { ascending: false })
-          if (data) setPlayers(data)
-          
-          // Update current player score
-          const updatedPlayer = data?.find(p => p.id === playerId)
-          if (updatedPlayer) setPlayer(updatedPlayer)
+          if (data) {
+            setPlayers(data)
+            const updatedPlayer = data.find(p => p.id === playerId)
+            if (updatedPlayer) setPlayer(updatedPlayer)
+          }
         }
       )
       .subscribe()
@@ -126,7 +128,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       supabase.removeChannel(channel)
       supabase.removeChannel(playersChannel)
     }
-  }, [game, questions, playerId, supabase, router])
+  }, [game?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer countdown
   useEffect(() => {
@@ -137,12 +139,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startTime) / 1000)
-      const remaining = Math.max(0, timeLimit - elapsed)
-      setTimeLeft(remaining)
+      setTimeLeft(Math.max(0, timeLimit - elapsed))
     }, 100)
 
     return () => clearInterval(interval)
-  }, [game?.status, game?.question_start_time, currentQuestion])
+  }, [game?.status, game?.question_start_time, currentQuestion?.id])
 
   const submitAnswer = useCallback(async (optionIndex: number) => {
     if (hasAnswered || !currentQuestion || !player || !game?.question_start_time) return
@@ -152,13 +153,14 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
     const options = currentQuestion.options as QuestionOption[]
     const isCorrect = options[optionIndex]?.isCorrect || false
-    const timeTaken = Math.floor((Date.now() - new Date(game.question_start_time).getTime()) / 1000)
-    
-    // Calculate points (faster = more points)
+    const timeTaken = Math.floor(
+      (Date.now() - new Date(game.question_start_time).getTime()) / 1000
+    )
     const timeBonus = Math.max(0, currentQuestion.time_limit - timeTaken)
-    const pointsEarned = isCorrect ? Math.floor(currentQuestion.points * (0.5 + (timeBonus / currentQuestion.time_limit) * 0.5)) : 0
+    const pointsEarned = isCorrect
+      ? Math.floor(currentQuestion.points * (0.5 + (timeBonus / currentQuestion.time_limit) * 0.5))
+      : 0
 
-    // Submit answer
     await supabase.from('answers').insert({
       player_id: player.id,
       question_id: currentQuestion.id,
@@ -168,7 +170,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       points_earned: pointsEarned,
     })
 
-    // Update player score
     if (isCorrect) {
       await supabase
         .from('players')
@@ -187,9 +188,18 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     )
   }
 
-  if (!game || !player) {
-    return null
+  if (error) {
+    return (
+      <main className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <p className="text-destructive mb-2 font-semibold">Could not load game</p>
+          <p className="text-muted-foreground text-sm">{error}</p>
+        </div>
+      </main>
+    )
   }
+
+  if (!game || !player) return null
 
   const optionColors = [
     'bg-red-500 hover:bg-red-600 active:bg-red-700',
@@ -200,7 +210,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
   return (
     <main className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="bg-card/50 backdrop-blur border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -213,7 +222,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 flex items-center justify-center p-4">
         {game.status === 'waiting' && (
           <div className="text-center">
@@ -227,7 +235,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
         {game.status === 'question' && currentQuestion && !hasAnswered && (
           <div className="w-full max-w-lg">
-            {/* Timer */}
             <div className="text-center mb-4">
               <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary ${
                 timeLeft !== null && timeLeft <= 5 ? 'text-primary animate-timer-pulse' : ''
@@ -237,12 +244,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               </div>
             </div>
 
-            {/* Question text */}
             <div className="bg-card/50 border border-border rounded-xl px-5 py-4 mb-5 text-center">
               <p className="text-lg font-semibold">{currentQuestion.question_text}</p>
             </div>
 
-            {/* Options */}
             <div className="grid grid-cols-2 gap-3">
               {(currentQuestion.options as QuestionOption[]).map((option, index) => (
                 <button
@@ -254,6 +259,13 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                 </button>
               ))}
             </div>
+          </div>
+        )}
+
+        {game.status === 'question' && !currentQuestion && (
+          <div className="text-center text-muted-foreground">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
+            <p>Loading question...</p>
           </div>
         )}
 
@@ -293,7 +305,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           <div className="w-full max-w-md text-center">
             <Trophy className="h-16 w-16 text-quiz-gold mx-auto mb-4" />
             <h2 className="text-3xl font-bold mb-2">Game Over!</h2>
-            
+
             <Card className="bg-card/50 mb-6">
               <CardContent className="py-6">
                 <div className="text-sm text-muted-foreground mb-1">Your final score</div>
@@ -325,13 +337,9 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         }`}>
                           #{index + 1}
                         </span>
-                        <span className={p.id === player.id ? 'font-bold' : ''}>
-                          {p.nickname}
-                        </span>
+                        <span className={p.id === player.id ? 'font-bold' : ''}>{p.nickname}</span>
                       </div>
-                      <span className="text-muted-foreground">
-                        {p.score.toLocaleString()}
-                      </span>
+                      <span className="text-muted-foreground">{p.score.toLocaleString()}</span>
                     </div>
                   ))}
                 </div>
