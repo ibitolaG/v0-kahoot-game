@@ -41,7 +41,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     const fetchData = async () => {
       const { data: gameData, error: gameError } = await supabase
         .from('games')
-        .select('*, quiz:quizzes(*, questions(*))')
+        .select('*')
         .eq('pin', pin.toUpperCase())
         .single()
 
@@ -62,14 +62,22 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         return
       }
 
-      const sortedQuestions: Question[] =
-        (gameData.quiz?.questions ?? []).sort(
-          (a: Question, b: Question) => a.order_index - b.order_index
-        )
+      // Fetch questions directly — avoids nested join RLS issues
+      const { data: questionsData, error: questionsError } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('quiz_id', gameData.quiz_id)
+        .order('order_index')
+
+      if (questionsError) {
+        setError(`Could not load questions (${questionsError.message})`)
+        setLoading(false)
+        return
+      }
 
       setGame(gameData)
       setPlayer(playerData)
-      setQuestions(sortedQuestions)
+      setQuestions(questionsData ?? [])
       setLoading(false)
     }
 
