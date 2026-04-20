@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { FieldGroup, Field, FieldLabel } from '@/components/ui/field'
-import { Zap, LogIn } from 'lucide-react'
+import { LogIn } from 'lucide-react'
+import { Brand } from '@/components/brand'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -42,8 +43,7 @@ export default function LoginPage() {
       <Card className="w-full max-w-md bg-card/50 backdrop-blur border-border/50">
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4">
-            <Zap className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold">QuizBlitz</span>
+            <Brand />
           </Link>
           <CardTitle className="text-2xl">Welcome back</CardTitle>
           <CardDescription>Sign in to host your quiz games</CardDescription>

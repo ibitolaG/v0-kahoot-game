@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, Users, Trophy, Play } from 'lucide-react'
+import { Users, Trophy, Play } from 'lucide-react'
+import { Brand } from '@/components/brand'
 
 export default function HomePage() {
   const [pin, setPin] = useState('')
@@ -26,12 +27,7 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 py-12">
         <div className="text-center mb-12">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Zap className="h-12 w-12 text-primary" />
-            <h1 className="text-5xl md:text-7xl font-bold tracking-tight">
-              Quiz<span className="text-primary">Blitz</span>
-            </h1>
-          </div>
+          <Brand className="justify-center mb-4" logoClassName="h-14 w-14" textClassName="text-left" />
           <p className="text-xl text-muted-foreground max-w-md mx-auto text-balance">
             Create and play real-time multiplayer quiz games with friends
           </p>

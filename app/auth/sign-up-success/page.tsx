@@ -1,7 +1,8 @@
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Zap, Mail, ArrowRight } from 'lucide-react'
+import { Mail, ArrowRight } from 'lucide-react'
+import { Brand } from '@/components/brand'
 
 export default function SignUpSuccessPage() {
   return (
@@ -9,8 +10,7 @@ export default function SignUpSuccessPage() {
       <Card className="w-full max-w-md bg-card/50 backdrop-blur border-border/50 text-center">
         <CardHeader>
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Zap className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold">QuizBlitz</span>
+            <Brand />
           </div>
           <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Mail className="h-8 w-8 text-primary" />

@@ -12,9 +12,10 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu'
-import { Zap, Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'lucide-react'
+import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
 import type { Quiz, Profile } from '@/lib/types'
+import { Brand } from '@/components/brand'
 
 interface DashboardClientProps {
   user: User
@@ -74,8 +75,7 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <Zap className="h-6 w-6 text-primary" />
-            <span className="text-xl font-bold">QuizBlitz</span>
+            <Brand />
           </Link>
           <div className="flex items-center gap-4">
             <span className="text-sm text-muted-foreground hidden sm:block">
