@@ -72,6 +72,13 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
   const router = useRouter()
   const supabase = createClient()
 
+  const getErrorMessage = (err: unknown) => {
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      return String(err.message)
+    }
+    return 'Please try again.'
+  }
+
   const addQuestion = () => {
     setQuestions([...questions, { ...DEFAULT_QUESTION }])
   }
@@ -237,6 +244,38 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
     setSaving(true)
 
     try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser()
+
+      if (authError) {
+        throw authError
+      }
+
+      if (!user) {
+        throw new Error('Your session expired. Please sign in again and retry.')
+      }
+
+      const displayName =
+        typeof user.user_metadata?.display_name === 'string' && user.user_metadata.display_name.trim()
+          ? user.user_metadata.display_name.trim()
+          : user.email?.split('@')[0] || 'Host'
+
+      const { error: profileError } = await supabase.from('profiles').upsert(
+        {
+          id: user.id,
+          display_name: displayName,
+        },
+        {
+          onConflict: 'id',
+        }
+      )
+
+      if (profileError) {
+        throw profileError
+      }
+
       let quizId = existingQuiz?.id
 
       if (existingQuiz) {
@@ -285,7 +324,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
       router.refresh()
     } catch (err) {
       console.error('Error saving quiz:', err)
-      setError('Failed to save quiz. Please try again.')
+      setError(`Failed to save quiz. ${getErrorMessage(err)}`)
       setSaving(false)
     }
   }
