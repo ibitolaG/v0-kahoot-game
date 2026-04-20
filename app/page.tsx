@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import { Users, Trophy, Play } from 'lucide-react'
+import { Users, Trophy, Play, Zap } from 'lucide-react'
 import { Brand } from '@/components/brand'
 
 export default function HomePage() {
