@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption } from '@/lib/types'
+import { Brand } from '@/components/brand'
 
 export default function PlayerGamePage({ params }: { params: Promise<{ pin: string }> }) {
   const { pin } = use(params)
@@ -75,9 +76,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         return
       }
 
+      const { data: playersData } = await supabase
+        .from('players')
+        .select('*')
+        .eq('game_id', gameData.id)
+        .order('score', { ascending: false })
+
       setGame(gameData)
       setPlayer(playerData)
       setQuestions(questionsData ?? [])
+      setPlayers(playersData ?? [])
       setLoading(false)
     }
 
@@ -221,7 +229,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       <header className="bg-card/50 backdrop-blur border-b border-border px-4 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Zap className="h-5 w-5 text-primary" />
+            <Brand showText={false} logoClassName="h-6 w-auto" />
             <span className="font-bold">{player.nickname}</span>
           </div>
           <div className="text-primary font-bold">
@@ -296,14 +304,95 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'results' && (
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-4">Results</h2>
+          <div className="w-full max-w-lg">
+            <div className="text-center mb-6">
+              {lastAnswer ? (
+                lastAnswer.correct ? (
+                  <>
+                    <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-3" />
+                    <h2 className="text-3xl font-bold text-green-500 mb-2">Correct!</h2>
+                    <p className="text-lg text-muted-foreground">+{lastAnswer.points.toLocaleString()} points</p>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="h-16 w-16 text-destructive mx-auto mb-3" />
+                    <h2 className="text-3xl font-bold text-destructive mb-2">Wrong answer</h2>
+                    <p className="text-lg text-muted-foreground">The correct answer is highlighted below.</p>
+                  </>
+                )
+              ) : (
+                <>
+                  <h2 className="text-3xl font-bold mb-2">Round Results</h2>
+                  <p className="text-muted-foreground">Review the correct answer before the next question starts.</p>
+                </>
+              )}
+            </div>
+
+            {currentQuestion && (
+              <>
+                <div className="bg-card/50 border border-border rounded-xl px-5 py-4 mb-5 text-center">
+                  <p className="text-lg font-semibold">{currentQuestion.question_text}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-6">
+                  {(currentQuestion.options as QuestionOption[]).map((option, index) => {
+                    const isCorrect = option.isCorrect
+                    const isSelected = selectedOption === index
+                    const cardClass = isCorrect
+                      ? 'border-green-500 bg-green-500 text-white'
+                      : isSelected
+                        ? 'border-destructive bg-destructive text-white'
+                        : 'border-border bg-secondary'
+
+                    return (
+                      <div
+                        key={index}
+                        className={`rounded-xl border-2 p-5 ${cardClass}`}
+                      >
+                        <div className="mb-2 text-sm font-bold">{String.fromCharCode(65 + index)}</div>
+                        <div className="font-semibold">{option.text}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+
             <Card className="bg-card/50">
               <CardContent className="py-6">
-                <div className="text-4xl font-bold text-primary mb-2">
+                <div className="text-4xl font-bold text-primary mb-2 text-center">
                   {player.score.toLocaleString()}
                 </div>
-                <p className="text-muted-foreground">Your total score</p>
+                <p className="text-muted-foreground text-center">Your total score</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {game.status === 'playing' && (
+          <div className="w-full max-w-md text-center">
+            <Trophy className="h-16 w-16 text-quiz-gold mx-auto mb-4" />
+            <h2 className="text-3xl font-bold mb-2">Leaderboard Break</h2>
+            <p className="text-muted-foreground mb-6">See where you stand before the next section starts.</p>
+
+            <Card className="bg-card/50">
+              <CardContent className="py-4">
+                <div className="space-y-2">
+                  {players.slice(0, 8).map((p, index) => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center justify-between py-2 px-3 rounded ${
+                        p.id === player.id ? 'bg-primary/10' : 'bg-secondary/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 font-bold text-primary">#{index + 1}</span>
+                        <span className={p.id === player.id ? 'font-bold' : ''}>{p.nickname}</span>
+                      </div>
+                      <span className="text-muted-foreground">{p.score.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>

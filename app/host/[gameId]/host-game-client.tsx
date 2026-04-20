@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Users, Play, ChevronRight, Trophy, X } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types'
+import { Brand } from '@/components/brand'
 
 interface HostGameClientProps {
   initialGame: Game & { 
@@ -27,23 +28,49 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 
   const questions = game.quiz.questions
   const currentQuestion = questions[game.current_question_index]
+  const quarterSize = Math.max(1, Math.ceil(questions.length / 4))
+
+  const shouldShowLeaderboardBreak = useCallback(
+    (nextIndex: number) => nextIndex > 0 && nextIndex < questions.length && nextIndex % quarterSize === 0,
+    [questions.length, quarterSize]
+  )
+
+  const fetchPlayers = useCallback(async () => {
+    const { data } = await supabase
+      .from('players')
+      .select('*')
+      .eq('game_id', game.id)
+      .order('score', { ascending: false })
+
+    if (data) {
+      setPlayers(data)
+    }
+  }, [game.id, supabase])
+
+  const fetchAnswers = useCallback(async (questionId?: string) => {
+    if (!questionId) {
+      setAnswers([])
+      return
+    }
+
+    const { data } = await supabase
+      .from('answers')
+      .select('*')
+      .eq('question_id', questionId)
+      .order('created_at', { ascending: true })
+
+    if (data) {
+      setAnswers(data)
+    }
+  }, [supabase])
 
   // Subscribe to realtime updates
   useEffect(() => {
-    // Fetch initial players
-    const fetchPlayers = async () => {
-      const { data } = await supabase
-        .from('players')
-        .select('*')
-        .eq('game_id', game.id)
-        .order('score', { ascending: false })
-      if (data) setPlayers(data)
-    }
     fetchPlayers()
+    fetchAnswers(currentQuestion?.id)
 
-    // Subscribe to player changes
     const playersChannel = supabase
-      .channel('players-channel')
+      .channel(`players-${game.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${game.id}` },
@@ -51,28 +78,27 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       )
       .subscribe()
 
-    // Subscribe to answers
-    const answersChannel = supabase
-      .channel('answers-channel')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'answers' },
-        (payload) => {
-          const answer = payload.new as Answer
-          // Check if this answer is from a player in our game
-          const isOurPlayer = players.some(p => p.id === answer.player_id)
-          if (isOurPlayer || answer.question_id === currentQuestion?.id) {
-            setAnswers(prev => [...prev, answer])
-          }
-        }
-      )
-      .subscribe()
+    const answersChannel = currentQuestion?.id
+      ? supabase
+          .channel(`answers-${game.id}-${currentQuestion.id}`)
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'answers', filter: `question_id=eq.${currentQuestion.id}` },
+            (payload) => {
+              const answer = payload.new as Answer
+              setAnswers(prev => prev.some(existing => existing.id === answer.id) ? prev : [...prev, answer])
+            }
+          )
+          .subscribe()
+      : null
 
     return () => {
       supabase.removeChannel(playersChannel)
-      supabase.removeChannel(answersChannel)
+      if (answersChannel) {
+        supabase.removeChannel(answersChannel)
+      }
     }
-  }, [game.id, supabase, players, currentQuestion?.id])
+  }, [game.id, supabase, currentQuestion?.id, fetchPlayers, fetchAnswers])
 
   // Timer countdown
   useEffect(() => {
@@ -118,10 +144,10 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   const showResults = useCallback(async () => {
     await supabase
       .from('games')
-      .update({ status: 'results' })
+      .update({ status: 'results', question_start_time: null })
       .eq('id', game.id)
 
-    setGame(prev => ({ ...prev, status: 'results' }))
+    setGame(prev => ({ ...prev, status: 'results', question_start_time: null }))
   }, [game.id, supabase])
 
   const nextQuestion = async () => {
@@ -134,35 +160,51 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
         .update({ status: 'finished' })
         .eq('id', game.id)
       setGame(prev => ({ ...prev, status: 'finished' }))
-    } else {
-      // Next question
+    } else if (shouldShowLeaderboardBreak(nextIndex)) {
       await supabase
         .from('games')
-        .update({ 
-          status: 'question',
+        .update({
+          status: 'playing',
           current_question_index: nextIndex,
-          question_start_time: new Date().toISOString()
+          question_start_time: null
         })
         .eq('id', game.id)
 
-      setGame(prev => ({ 
-        ...prev, 
-        status: 'question',
+      setGame(prev => ({
+        ...prev,
+        status: 'playing',
         current_question_index: nextIndex,
-        question_start_time: new Date().toISOString()
+        question_start_time: null
       }))
       setAnswers([])
-      setTimeLeft(questions[nextIndex]?.time_limit || 20)
+    } else {
+      await startNextQuestion(nextIndex)
     }
 
-    // Refresh players for updated scores
-    const { data } = await supabase
-      .from('players')
-      .select('*')
-      .eq('game_id', game.id)
-      .order('score', { ascending: false })
-    if (data) setPlayers(data)
+    await fetchPlayers()
   }
+
+  const startNextQuestion = useCallback(async (questionIndex = game.current_question_index) => {
+    const timestamp = new Date().toISOString()
+
+    await supabase
+      .from('games')
+      .update({
+        status: 'question',
+        current_question_index: questionIndex,
+        question_start_time: timestamp
+      })
+      .eq('id', game.id)
+
+    setGame(prev => ({
+      ...prev,
+      status: 'question',
+      current_question_index: questionIndex,
+      question_start_time: timestamp
+    }))
+    setAnswers([])
+    setTimeLeft(questions[questionIndex]?.time_limit || 20)
+  }, [game.id, game.current_question_index, questions, supabase])
 
   const endGame = async () => {
     await supabase.from('games').delete().eq('id', game.id)
@@ -186,7 +228,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       <header className="bg-card/50 backdrop-blur border-b border-border px-4 py-4">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Zap className="h-6 w-6 text-primary" />
+            <Brand showText={false} logoClassName="h-9 w-auto" />
             <span className="font-bold text-lg">{game.quiz.title}</span>
           </div>
           <div className="flex items-center gap-4">
@@ -218,7 +260,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
             questionNumber={game.current_question_index + 1}
             totalQuestions={questions.length}
             timeLeft={timeLeft}
-            answeredCount={answers.filter(a => a.question_id === currentQuestion.id).length}
+            answeredCount={answers.length}
             totalPlayers={players.length}
             onTimeUp={showResults}
           />
@@ -230,6 +272,16 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
             answerCounts={getAnswerCounts()}
             onNext={nextQuestion}
             isLastQuestion={game.current_question_index >= questions.length - 1}
+            nextStepLabel={shouldShowLeaderboardBreak(game.current_question_index + 1) ? 'Leaderboard' : 'Next Question'}
+          />
+        )}
+
+        {game.status === 'playing' && (
+          <LeaderboardBreakScreen
+            players={players}
+            currentQuestionNumber={game.current_question_index}
+            totalQuestions={questions.length}
+            onContinue={() => startNextQuestion()}
           />
         )}
 
@@ -373,11 +425,13 @@ function ResultsScreen({
   answerCounts,
   onNext,
   isLastQuestion,
+  nextStepLabel,
 }: {
   question: Question
   answerCounts: number[]
   onNext: () => void
   isLastQuestion: boolean
+  nextStepLabel: string
 }) {
   const options = question.options as QuestionOption[]
   const totalAnswers = answerCounts.reduce((a, b) => a + b, 0)
@@ -436,10 +490,64 @@ function ResultsScreen({
             </>
           ) : (
             <>
-              Next Question
+              {nextStepLabel}
               <ChevronRight className="ml-2 h-5 w-5" />
             </>
           )}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function LeaderboardBreakScreen({
+  players,
+  currentQuestionNumber,
+  totalQuestions,
+  onContinue,
+}: {
+  players: Player[]
+  currentQuestionNumber: number
+  totalQuestions: number
+  onContinue: () => void
+}) {
+  const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
+  const topPlayers = sortedPlayers.slice(0, 8)
+  const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
+
+  return (
+    <div className="w-full max-w-3xl">
+      <div className="text-center mb-8">
+        <Trophy className="h-14 w-14 text-quiz-gold mx-auto mb-4" />
+        <h2 className="text-4xl font-bold mb-2">Leaderboard Break</h2>
+        <p className="text-muted-foreground">
+          Standings after question {checkpoint} of {totalQuestions}
+        </p>
+      </div>
+
+      <Card className="bg-card/50 mb-8">
+        <CardContent className="py-4">
+          <div className="space-y-3">
+            {topPlayers.map((player, index) => (
+              <div
+                key={player.id}
+                className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-8 text-lg font-bold text-primary">#{index + 1}</span>
+                  <span className="font-semibold">{player.nickname}</span>
+                </div>
+                <span className="text-muted-foreground">{player.score.toLocaleString()} pts</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="text-center">
+        <Button size="lg" onClick={onContinue} className="text-lg px-8">
+          Continue Quiz
+          <ChevronRight className="ml-2 h-5 w-5" />
         </Button>
       </div>
     </div>
