@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { QuizBuilder } from '@/components/quiz-builder'
 
+export const dynamic = 'force-dynamic'
+
 export default async function CreateQuizPage() {
   const supabase = await createClient()
   

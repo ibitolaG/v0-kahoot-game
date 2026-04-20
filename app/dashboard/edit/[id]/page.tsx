@@ -2,6 +2,8 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { QuizBuilder } from '@/components/quiz-builder'
 
+export const dynamic = 'force-dynamic'
+
 export default async function EditQuizPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()

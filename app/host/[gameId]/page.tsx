@@ -2,6 +2,8 @@ import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { HostGameClient } from './host-game-client'
 
+export const dynamic = 'force-dynamic'
+
 export default async function HostGamePage({ params }: { params: Promise<{ gameId: string }> }) {
   const { gameId } = await params
   const supabase = await createClient()
