@@ -6,11 +6,11 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
@@ -26,6 +26,7 @@ interface DashboardClientProps {
 
 export function DashboardClient({ user, quizzes, profile }: DashboardClientProps) {
   const [loading, setLoading] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -37,43 +38,60 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
 
   const handleDeleteQuiz = async (quizId: string) => {
     if (!confirm('Are you sure you want to delete this quiz?')) return
-    
+
     setLoading(quizId)
     await supabase.from('quizzes').delete().eq('id', quizId)
     router.refresh()
     setLoading(null)
   }
 
+  const createGame = async (quizId: string, includeMaxPlayers: boolean) => {
+    const pin = Math.random().toString(36).substring(2, 8).toUpperCase()
+    const payload: {
+      quiz_id: string
+      host_id: string
+      pin: string
+      status: 'waiting'
+      max_players?: number
+    } = {
+      quiz_id: quizId,
+      host_id: user.id,
+      pin,
+      status: 'waiting',
+    }
+
+    if (includeMaxPlayers) {
+      payload.max_players = DEFAULT_MAX_PLAYERS
+    }
+
+    return supabase.from('games').insert(payload).select().single()
+  }
+
   const handleStartGame = async (quizId: string) => {
     setLoading(quizId)
-    
-    // Generate a 6-character PIN
-    const pin = Math.random().toString(36).substring(2, 8).toUpperCase()
-    
-    const { data: game, error } = await supabase
-      .from('games')
-      .insert({
-        quiz_id: quizId,
-        host_id: user.id,
-        pin,
-        status: 'waiting',
-        max_players: DEFAULT_MAX_PLAYERS,
-      })
-      .select()
-      .single()
-    
-    if (error) {
-      console.error('Error creating game:', error)
+    setErrorMessage(null)
+
+    let result = await createGame(quizId, true)
+
+    const missingMaxPlayersColumn =
+      result.error?.code === 'PGRST204' && result.error.message.includes('max_players')
+
+    if (missingMaxPlayersColumn) {
+      result = await createGame(quizId, false)
+    }
+
+    if (result.error || !result.data) {
+      console.error('Error creating game:', result.error)
+      setErrorMessage(result.error?.message ?? 'Unable to create game right now.')
       setLoading(null)
       return
     }
-    
-    router.push(`/host/${game.id}`)
+
+    router.push(`/host/${result.data.id}`)
   }
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/dashboard" className="flex items-center gap-2">
@@ -90,7 +108,6 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -104,6 +121,12 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
             </Button>
           </Link>
         </div>
+
+        {errorMessage && (
+          <div className="mb-6 rounded-md border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {errorMessage}
+          </div>
+        )}
 
         {quizzes.length === 0 ? (
           <Card className="bg-card/50 border-dashed">
@@ -146,7 +169,7 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
                             Edit
                           </Link>
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
+                        <DropdownMenuItem
                           onClick={() => handleDeleteQuiz(quiz.id)}
                           className="text-destructive"
                         >
@@ -163,8 +186,8 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
                       {quiz.description}
                     </p>
                   )}
-                  <Button 
-                    className="w-full" 
+                  <Button
+                    className="w-full"
                     onClick={() => handleStartGame(quiz.id)}
                     disabled={loading === quiz.id || (quiz.questions[0]?.count || 0) === 0}
                   >
