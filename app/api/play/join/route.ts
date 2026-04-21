@@ -2,6 +2,29 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DEFAULT_MAX_PLAYERS } from '@/lib/gameplay'
 
+async function loadGame(pin: string) {
+  const supabase = createAdminClient()
+
+  let result = await supabase
+    .from('games')
+    .select('id, status, max_players')
+    .eq('pin', pin)
+    .single()
+
+  const missingMaxPlayersColumn =
+    result.error?.code === 'PGRST204' && result.error.message.includes('max_players')
+
+  if (missingMaxPlayersColumn) {
+    result = await supabase
+      .from('games')
+      .select('id, status')
+      .eq('pin', pin)
+      .single()
+  }
+
+  return result
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -15,11 +38,7 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
 
-    const { data: game, error: gameError } = await supabase
-      .from('games')
-      .select('id, status, max_players')
-      .eq('pin', pin)
-      .single()
+    const { data: game, error: gameError } = await loadGame(pin)
 
     if (gameError || !game) {
       return NextResponse.json({ error: 'Game not found.' }, { status: 404 })
