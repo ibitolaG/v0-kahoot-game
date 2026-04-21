@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -60,16 +59,6 @@ export default function HomePage() {
             </form>
           </CardContent>
         </Card>
-
-        {/* Host Section */}
-        <div className="mt-8 text-center">
-          <p className="text-muted-foreground mb-3">Want to host your own quiz?</p>
-          <Link href="/auth/login">
-            <Button variant="outline" size="lg" className="border-primary/50 hover:bg-primary/10">
-              Sign in to Host
-            </Button>
-          </Link>
-        </div>
       </section>
 
       {/* Features Section */}

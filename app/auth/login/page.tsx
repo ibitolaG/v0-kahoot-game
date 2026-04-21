@@ -46,7 +46,7 @@ export default function LoginPage() {
             <Brand />
           </Link>
           <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>Sign in to host your quiz games</CardDescription>
+          <CardDescription>Sign in to open your quiz dashboard</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -88,13 +88,6 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm">
-            <span className="text-muted-foreground">Don&apos;t have an account? </span>
-            <Link href="/auth/sign-up" className="text-primary hover:underline font-medium">
-              Sign up
-            </Link>
-          </div>
         </CardContent>
       </Card>
     </main>
