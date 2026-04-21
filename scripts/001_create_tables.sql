@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS public.games (
   quiz_id UUID NOT NULL REFERENCES public.quizzes(id) ON DELETE CASCADE,
   host_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   pin TEXT NOT NULL UNIQUE,
+  max_players INTEGER NOT NULL DEFAULT 50,
   status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'playing', 'question', 'results', 'finished')),
   current_question_index INTEGER DEFAULT 0,
   question_start_time TIMESTAMPTZ,
@@ -113,6 +114,7 @@ CREATE TABLE IF NOT EXISTS public.players (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES public.games(id) ON DELETE CASCADE,
   nickname TEXT NOT NULL,
+  reconnect_token UUID UNIQUE,
   score INTEGER NOT NULL DEFAULT 0,
   joined_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -121,9 +123,15 @@ ALTER TABLE public.players ENABLE ROW LEVEL SECURITY;
 
 -- Public access for players
 CREATE POLICY "players_select" ON public.players FOR SELECT USING (true);
-CREATE POLICY "players_insert" ON public.players FOR INSERT WITH CHECK (true);
-CREATE POLICY "players_update" ON public.players FOR UPDATE USING (true);
-CREATE POLICY "players_delete" ON public.players FOR DELETE USING (true);
+CREATE POLICY "players_insert_host" ON public.players FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM public.games WHERE games.id = players.game_id AND games.host_id = auth.uid())
+);
+CREATE POLICY "players_update_host" ON public.players FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.games WHERE games.id = players.game_id AND games.host_id = auth.uid())
+);
+CREATE POLICY "players_delete_host" ON public.players FOR DELETE USING (
+  EXISTS (SELECT 1 FROM public.games WHERE games.id = players.game_id AND games.host_id = auth.uid())
+);
 
 -- Answers table (player responses)
 CREATE TABLE IF NOT EXISTS public.answers (
@@ -141,7 +149,14 @@ CREATE TABLE IF NOT EXISTS public.answers (
 ALTER TABLE public.answers ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "answers_select" ON public.answers FOR SELECT USING (true);
-CREATE POLICY "answers_insert" ON public.answers FOR INSERT WITH CHECK (true);
+CREATE POLICY "answers_insert_host" ON public.answers FOR INSERT WITH CHECK (
+  EXISTS (
+    SELECT 1
+    FROM public.players
+    JOIN public.games ON games.id = players.game_id
+    WHERE players.id = answers.player_id AND games.host_id = auth.uid()
+  )
+);
 
 -- Enable realtime for games and players
 ALTER PUBLICATION supabase_realtime ADD TABLE public.games;

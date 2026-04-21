@@ -39,6 +39,7 @@ export interface Game {
   host_id: string
   pin: string
   status: GameStatus
+  max_players: number
   current_question_index: number
   question_start_time: string | null
   created_at: string
@@ -51,6 +52,7 @@ export interface Player {
   game_id: string
   nickname: string
   score: number
+  reconnect_token?: string
   joined_at: string
 }
 

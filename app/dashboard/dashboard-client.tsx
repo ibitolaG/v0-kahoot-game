@@ -16,6 +16,7 @@ import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'luc
 import type { User } from '@supabase/supabase-js'
 import type { Quiz, Profile } from '@/lib/types'
 import { Brand } from '@/components/brand'
+import { DEFAULT_MAX_PLAYERS } from '@/lib/gameplay'
 
 interface DashboardClientProps {
   user: User
@@ -56,6 +57,7 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
         host_id: user.id,
         pin,
         status: 'waiting',
+        max_players: DEFAULT_MAX_PLAYERS,
       })
       .select()
       .single()

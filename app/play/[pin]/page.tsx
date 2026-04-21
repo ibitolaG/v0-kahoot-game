@@ -3,50 +3,62 @@
 import { useState, useEffect, use } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2 } from 'lucide-react'
+import { Brand } from '@/components/brand'
 
 export default function JoinGamePage({ params }: { params: Promise<{ pin: string }> }) {
   const { pin } = use(params)
+  const normalizedPin = pin.toUpperCase()
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [gameExists, setGameExists] = useState(false)
-  const [playerId, setPlayerId] = useState<string | null>(null)
   const router = useRouter()
-  const supabase = createClient()
+  const storageKey = `quizblitz:${normalizedPin}:reconnect-token`
+  const nicknameStorageKey = `quizblitz:${normalizedPin}:nickname`
 
   // Check if game exists
   useEffect(() => {
     const checkGame = async () => {
-      const { data: game } = await supabase
-        .from('games')
-        .select('id, status')
-        .eq('pin', pin.toUpperCase())
-        .single()
+      const reconnectToken = localStorage.getItem(storageKey)
+      const params = new URLSearchParams({ pin: normalizedPin })
+      if (reconnectToken) {
+        params.set('reconnectToken', reconnectToken)
+      }
 
-      if (!game) {
-        setError('Game not found. Please check the PIN and try again.')
-        setGameExists(false)
-      } else if (game.status !== 'waiting') {
-        setError('This game has already started.')
-        setGameExists(false)
-      } else {
+      const response = await fetch(`/api/play/check?${params.toString()}`)
+      const data = await response.json().catch(() => null)
+
+      if (response.ok) {
+        setError(null)
         setGameExists(true)
+        if (data?.rejoinAvailable) {
+          const savedNickname = localStorage.getItem(nicknameStorageKey)
+          if (savedNickname) {
+            setNickname(savedNickname)
+          }
+        }
+      } else {
+        setGameExists(false)
+        setError(data?.error || 'Game not found. Please check the PIN and try again.')
       }
       setLoading(false)
     }
 
     checkGame()
-  }, [pin, supabase])
+  }, [normalizedPin, storageKey, nicknameStorageKey])
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!nickname.trim()) {
+    const reconnectToken = localStorage.getItem(storageKey)
+    const savedNickname = localStorage.getItem(nicknameStorageKey)
+    const effectiveNickname = nickname.trim() || savedNickname || ''
+
+    if (!effectiveNickname) {
       setError('Please enter a nickname')
       return
     }
@@ -54,44 +66,27 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
     setJoining(true)
     setError(null)
 
-    // Find the game
-    const { data: game } = await supabase
-      .from('games')
-      .select('id, status')
-      .eq('pin', pin.toUpperCase())
-      .single()
+    const response = await fetch('/api/play/join', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pin: normalizedPin,
+        nickname: effectiveNickname,
+        reconnectToken,
+      }),
+    })
 
-    if (!game) {
-      setError('Game not found')
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok || !data?.playerId || !data?.reconnectToken) {
+      setError(data?.error || 'Failed to join game. Please try again.')
       setJoining(false)
       return
     }
 
-    if (game.status !== 'waiting') {
-      setError('This game has already started')
-      setJoining(false)
-      return
-    }
-
-    // Create player
-    const { data: player, error: playerError } = await supabase
-      .from('players')
-      .insert({
-        game_id: game.id,
-        nickname: nickname.trim(),
-      })
-      .select()
-      .single()
-
-    if (playerError) {
-      setError('Failed to join game. Please try again.')
-      setJoining(false)
-      return
-    }
-
-    // Store player ID and navigate to game
-    setPlayerId(player.id)
-    router.push(`/play/${pin.toUpperCase()}/game?player=${player.id}`)
+    localStorage.setItem(storageKey, data.reconnectToken)
+    localStorage.setItem(nicknameStorageKey, effectiveNickname)
+    router.push(`/play/${normalizedPin}/game?player=${data.playerId}`)
   }
 
   if (loading) {
@@ -105,8 +100,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <Link href="/" className="flex items-center gap-2 mb-8">
-        <Zap className="h-8 w-8 text-primary" />
-        <span className="text-2xl font-bold">QuizBlitz</span>
+        <Brand />
       </Link>
 
       <Card className="w-full max-w-md bg-card/50 backdrop-blur border-border/50">
@@ -114,7 +108,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
           <div className="text-center mb-6">
             <div className="text-sm text-muted-foreground mb-1">Joining game</div>
             <div className="text-3xl font-mono font-bold tracking-widest text-primary">
-              {pin.toUpperCase()}
+              {normalizedPin}
             </div>
           </div>
 

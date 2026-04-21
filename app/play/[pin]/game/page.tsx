@@ -168,32 +168,35 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     setHasAnswered(true)
 
     const options = currentQuestion.options as QuestionOption[]
-    const isCorrect = options[optionIndex]?.isCorrect || false
-    const timeTaken = Math.floor(
-      (Date.now() - new Date(game.question_start_time).getTime()) / 1000
-    )
-    const timeBonus = Math.max(0, currentQuestion.time_limit - timeTaken)
-    const pointsEarned = isCorrect
-      ? Math.floor(currentQuestion.points * (0.5 + (timeBonus / currentQuestion.time_limit) * 0.5))
-      : 0
+    const fallbackCorrect = options[optionIndex]?.isCorrect || false
 
-    await supabase.from('answers').insert({
-      player_id: player.id,
-      question_id: currentQuestion.id,
-      selected_option: optionIndex,
-      is_correct: isCorrect,
-      time_taken: timeTaken,
-      points_earned: pointsEarned,
+    const response = await fetch('/api/play/answer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerId: player.id,
+        selectedOption: optionIndex,
+      }),
     })
 
-    if (isCorrect) {
-      await supabase
-        .from('players')
-        .update({ score: player.score + pointsEarned })
-        .eq('id', player.id)
+    const data = await response.json().catch(() => null)
+
+    if (!response.ok) {
+      setHasAnswered(false)
+      setSelectedOption(null)
+      setError(data?.error || 'Failed to submit answer.')
+      return
     }
 
-    setLastAnswer({ correct: isCorrect, points: pointsEarned })
+    const updatedScore = typeof data?.score === 'number'
+      ? data.score
+      : player.score + (typeof data?.points === 'number' ? data.points : 0)
+
+    setPlayer(prev => prev ? { ...prev, score: updatedScore } : prev)
+    setLastAnswer({
+      correct: typeof data?.correct === 'boolean' ? data.correct : fallbackCorrect,
+      points: typeof data?.points === 'number' ? data.points : 0,
+    })
   }, [hasAnswered, currentQuestion, player, game?.question_start_time, supabase])
 
   if (loading) {
