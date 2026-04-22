@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -29,6 +29,17 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   const questions = game.quiz.questions
   const currentQuestion = questions[game.current_question_index]
   const quarterSize = Math.max(1, Math.ceil(questions.length / 4))
+  const currentPlayerIds = useMemo(() => new Set(players.map((player) => player.id)), [players])
+  const currentGameAnswers = useMemo(() => {
+    const latestAnswersByPlayer = new Map<string, Answer>()
+
+    answers.forEach((answer) => {
+      if (!currentPlayerIds.has(answer.player_id)) return
+      latestAnswersByPlayer.set(answer.player_id, answer)
+    })
+
+    return Array.from(latestAnswersByPlayer.values())
+  }, [answers, currentPlayerIds])
 
   const shouldShowLeaderboardBreak = useCallback(
     (nextIndex: number) => nextIndex > 0 && nextIndex < questions.length && nextIndex % quarterSize === 0,
@@ -44,10 +55,13 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 
     if (data) {
       setPlayers(data)
+      return data
     }
+
+    return []
   }, [game.id, supabase])
 
-  const fetchAnswers = useCallback(async (questionId?: string) => {
+  const fetchAnswers = useCallback(async (questionId?: string, playerIds?: string[]) => {
     if (!questionId) {
       setAnswers([])
       return
@@ -60,21 +74,29 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       .order('created_at', { ascending: true })
 
     if (data) {
-      setAnswers(data)
+      const activePlayerIds = new Set(playerIds ?? players.map((player) => player.id))
+      setAnswers(data.filter((answer) => activePlayerIds.has(answer.player_id)))
     }
-  }, [supabase])
+  }, [players, supabase])
 
   // Subscribe to realtime updates
   useEffect(() => {
-    fetchPlayers()
-    fetchAnswers(currentQuestion?.id)
+    const bootstrap = async () => {
+      const activePlayers = await fetchPlayers()
+      await fetchAnswers(currentQuestion?.id, activePlayers.map((player) => player.id))
+    }
+
+    bootstrap()
 
     const playersChannel = supabase
       .channel(`players-${game.id}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${game.id}` },
-        () => fetchPlayers()
+        async () => {
+          const activePlayers = await fetchPlayers()
+          await fetchAnswers(currentQuestion?.id, activePlayers.map((player) => player.id))
+        }
       )
       .subscribe()
 
@@ -86,6 +108,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
             { event: 'INSERT', schema: 'public', table: 'answers', filter: `question_id=eq.${currentQuestion.id}` },
             (payload) => {
               const answer = payload.new as Answer
+              if (!currentPlayerIds.has(answer.player_id)) return
               setAnswers(prev => prev.some(existing => existing.id === answer.id) ? prev : [...prev, answer])
             }
           )
@@ -98,7 +121,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
         supabase.removeChannel(answersChannel)
       }
     }
-  }, [game.id, supabase, currentQuestion?.id, fetchPlayers, fetchAnswers])
+  }, [game.id, supabase, currentQuestion?.id, fetchPlayers, fetchAnswers, currentPlayerIds])
 
   // Timer countdown
   useEffect(() => {
@@ -150,7 +173,29 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
     setGame(prev => ({ ...prev, status: 'results', question_start_time: null }))
   }, [game.id, supabase])
 
-  const nextQuestion = async () => {
+  const startNextQuestion = useCallback(async (questionIndex = game.current_question_index) => {
+    const timestamp = new Date().toISOString()
+
+    await supabase
+      .from('games')
+      .update({
+        status: 'question',
+        current_question_index: questionIndex,
+        question_start_time: timestamp
+      })
+      .eq('id', game.id)
+
+    setGame(prev => ({
+      ...prev,
+      status: 'question',
+      current_question_index: questionIndex,
+      question_start_time: timestamp
+    }))
+    setAnswers([])
+    setTimeLeft(questions[questionIndex]?.time_limit || 20)
+  }, [game.id, game.current_question_index, questions, supabase])
+
+  const nextQuestion = useCallback(async () => {
     const nextIndex = game.current_question_index + 1
 
     if (nextIndex >= questions.length) {
@@ -182,29 +227,27 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
     }
 
     await fetchPlayers()
-  }
+  }, [fetchPlayers, game.current_question_index, game.id, questions.length, shouldShowLeaderboardBreak, startNextQuestion, supabase])
 
-  const startNextQuestion = useCallback(async (questionIndex = game.current_question_index) => {
-    const timestamp = new Date().toISOString()
+  useEffect(() => {
+    if (game.status !== 'results') return
 
-    await supabase
-      .from('games')
-      .update({
-        status: 'question',
-        current_question_index: questionIndex,
-        question_start_time: timestamp
-      })
-      .eq('id', game.id)
+    const timeout = setTimeout(() => {
+      void nextQuestion()
+    }, 5000)
 
-    setGame(prev => ({
-      ...prev,
-      status: 'question',
-      current_question_index: questionIndex,
-      question_start_time: timestamp
-    }))
-    setAnswers([])
-    setTimeLeft(questions[questionIndex]?.time_limit || 20)
-  }, [game.id, game.current_question_index, questions, supabase])
+    return () => clearTimeout(timeout)
+  }, [game.status, game.current_question_index, nextQuestion])
+
+  useEffect(() => {
+    if (game.status !== 'playing') return
+
+    const timeout = setTimeout(() => {
+      void startNextQuestion()
+    }, 5000)
+
+    return () => clearTimeout(timeout)
+  }, [game.status, game.current_question_index, startNextQuestion])
 
   const endGame = async () => {
     await supabase.from('games').delete().eq('id', game.id)
@@ -214,7 +257,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   // Get answer counts for current question
   const getAnswerCounts = () => {
     const counts: number[] = currentQuestion?.options.map(() => 0) || []
-    answers.forEach(a => {
+    currentGameAnswers.forEach(a => {
       if (a.question_id === currentQuestion?.id && counts[a.selected_option] !== undefined) {
         counts[a.selected_option]++
       }
@@ -260,7 +303,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
             questionNumber={game.current_question_index + 1}
             totalQuestions={questions.length}
             timeLeft={timeLeft}
-            answeredCount={answers.length}
+            answeredCount={currentGameAnswers.length}
             totalPlayers={players.length}
             onTimeUp={showResults}
           />
@@ -482,6 +525,7 @@ function ResultsScreen({
       </div>
 
       <div className="text-center">
+        <p className="mb-4 text-sm text-muted-foreground">Moving on automatically in 5 seconds...</p>
         <Button size="lg" onClick={onNext} className="text-lg px-8">
           {isLastQuestion ? (
             <>
@@ -545,6 +589,7 @@ function LeaderboardBreakScreen({
       </Card>
 
       <div className="text-center">
+        <p className="mb-4 text-sm text-muted-foreground">Next question starts automatically in 5 seconds...</p>
         <Button size="lg" onClick={onContinue} className="text-lg px-8">
           Continue Quiz
           <ChevronRight className="ml-2 h-5 w-5" />

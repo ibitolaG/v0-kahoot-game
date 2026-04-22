@@ -169,6 +169,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
     const options = currentQuestion.options as QuestionOption[]
     const fallbackCorrect = options[optionIndex]?.isCorrect || false
+    setLastAnswer({
+      correct: fallbackCorrect,
+      points: 0,
+    })
 
     const response = await fetch('/api/play/answer', {
       method: 'POST',
@@ -184,6 +188,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     if (!response.ok) {
       setHasAnswered(false)
       setSelectedOption(null)
+      setLastAnswer(null)
       setError(data?.error || 'Failed to submit answer.')
       return
     }
