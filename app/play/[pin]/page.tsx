@@ -21,7 +21,6 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
   const storageKey = `quizblitz:${normalizedPin}:reconnect-token`
   const nicknameStorageKey = `quizblitz:${normalizedPin}:nickname`
 
-  // Check if game exists
   useEffect(() => {
     const checkGame = async () => {
       const reconnectToken = localStorage.getItem(storageKey)
@@ -78,13 +77,17 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
 
     const data = await response.json().catch(() => null)
 
-    if (!response.ok || !data?.playerId || !data?.reconnectToken) {
+    if (!response.ok || !data?.playerId) {
       setError(data?.error || 'Failed to join game. Please try again.')
       setJoining(false)
       return
     }
 
-    localStorage.setItem(storageKey, data.reconnectToken)
+    if (data.reconnectToken) {
+      localStorage.setItem(storageKey, data.reconnectToken)
+    } else {
+      localStorage.removeItem(storageKey)
+    }
     localStorage.setItem(nicknameStorageKey, effectiveNickname)
     router.push(`/play/${normalizedPin}/game?player=${data.playerId}`)
   }
