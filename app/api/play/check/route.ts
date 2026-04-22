@@ -1,6 +1,24 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+async function findExistingPlayer(supabase: ReturnType<typeof createAdminClient>, gameId: string, reconnectToken: string) {
+  let result = await supabase
+    .from('players')
+    .select('id, nickname')
+    .eq('game_id', gameId)
+    .eq('reconnect_token', reconnectToken)
+    .maybeSingle()
+
+  const missingReconnectColumn =
+    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+
+  if (missingReconnectColumn) {
+    return { data: null, error: null }
+  }
+
+  return result
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const pin = url.searchParams.get('pin')?.trim().toUpperCase()
@@ -22,12 +40,7 @@ export async function GET(request: Request) {
   }
 
   if (reconnectToken) {
-    const { data: existingPlayer } = await supabase
-      .from('players')
-      .select('id')
-      .eq('game_id', game.id)
-      .eq('reconnect_token', reconnectToken)
-      .maybeSingle()
+    const { data: existingPlayer } = await findExistingPlayer(supabase, game.id, reconnectToken)
 
     if (existingPlayer && game.status !== 'finished') {
       return NextResponse.json({

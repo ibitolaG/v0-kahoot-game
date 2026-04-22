@@ -1,6 +1,59 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
+async function findExistingPlayer(supabase: ReturnType<typeof createAdminClient>, gameId: string, reconnectToken: string) {
+  let result = await supabase
+    .from('players')
+    .select('id, nickname')
+    .eq('game_id', gameId)
+    .eq('reconnect_token', reconnectToken)
+    .maybeSingle()
+
+  const missingReconnectColumn =
+    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+
+  if (missingReconnectColumn) {
+    return { data: null, error: null, supportsReconnect: false }
+  }
+
+  return { ...result, supportsReconnect: true }
+}
+
+async function insertPlayer(
+  supabase: ReturnType<typeof createAdminClient>,
+  gameId: string,
+  nickname: string,
+  reconnectToken: string
+) {
+  let result = await supabase
+    .from('players')
+    .insert({
+      game_id: gameId,
+      nickname,
+      reconnect_token: reconnectToken,
+    })
+    .select('id, nickname')
+    .single()
+
+  const missingReconnectColumn =
+    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+
+  if (missingReconnectColumn) {
+    result = await supabase
+      .from('players')
+      .insert({
+        game_id: gameId,
+        nickname,
+      })
+      .select('id, nickname')
+      .single()
+
+    return { ...result, supportsReconnect: false }
+  }
+
+  return { ...result, supportsReconnect: true }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -25,12 +78,7 @@ export async function POST(request: Request) {
     }
 
     if (reconnectToken) {
-      const { data: existingPlayer } = await supabase
-        .from('players')
-        .select('id, nickname')
-        .eq('game_id', game.id)
-        .eq('reconnect_token', reconnectToken)
-        .maybeSingle()
+      const { data: existingPlayer } = await findExistingPlayer(supabase, game.id, reconnectToken)
 
       if (existingPlayer) {
         return NextResponse.json({
@@ -48,24 +96,24 @@ export async function POST(request: Request) {
 
     const token = reconnectToken || crypto.randomUUID()
 
-    const { data: player, error: playerError } = await supabase
-      .from('players')
-      .insert({
-        game_id: game.id,
-        nickname,
-        reconnect_token: token,
-      })
-      .select('id, nickname')
-      .single()
+    const { data: player, error: playerError, supportsReconnect } = await insertPlayer(
+      supabase,
+      game.id,
+      nickname,
+      token
+    )
 
     if (playerError || !player) {
-      return NextResponse.json({ error: 'Failed to join game.' }, { status: 500 })
+      return NextResponse.json(
+        { error: playerError?.message ?? 'Failed to join game.' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
       playerId: player.id,
       nickname: player.nickname,
-      reconnectToken: token,
+      reconnectToken: supportsReconnect ? token : null,
       reconnected: false,
     })
   } catch (error) {
