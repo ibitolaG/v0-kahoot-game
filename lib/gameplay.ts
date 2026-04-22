@@ -1,7 +1,5 @@
 import type { QuestionOption } from '@/lib/types'
 
-export const DEFAULT_MAX_PLAYERS = 100
-
 export function calculatePoints(
   options: QuestionOption[],
   selectedOption: number,

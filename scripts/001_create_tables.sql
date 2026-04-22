@@ -92,7 +92,6 @@ CREATE TABLE IF NOT EXISTS public.games (
   quiz_id UUID NOT NULL REFERENCES public.quizzes(id) ON DELETE CASCADE,
   host_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   pin TEXT NOT NULL UNIQUE,
-  max_players INTEGER NOT NULL DEFAULT 100,
   status TEXT NOT NULL DEFAULT 'waiting' CHECK (status IN ('waiting', 'playing', 'question', 'results', 'finished')),
   current_question_index INTEGER DEFAULT 0,
   question_start_time TIMESTAMPTZ,

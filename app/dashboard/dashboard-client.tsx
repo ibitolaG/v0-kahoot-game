@@ -16,7 +16,6 @@ import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'luc
 import type { User } from '@supabase/supabase-js'
 import type { Quiz, Profile } from '@/lib/types'
 import { Brand } from '@/components/brand'
-import { DEFAULT_MAX_PLAYERS } from '@/lib/gameplay'
 
 interface DashboardClientProps {
   user: User
@@ -45,49 +44,31 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
     setLoading(null)
   }
 
-  const createGame = async (quizId: string, includeMaxPlayers: boolean) => {
-    const pin = Math.random().toString(36).substring(2, 8).toUpperCase()
-    const payload: {
-      quiz_id: string
-      host_id: string
-      pin: string
-      status: 'waiting'
-      max_players?: number
-    } = {
-      quiz_id: quizId,
-      host_id: user.id,
-      pin,
-      status: 'waiting',
-    }
-
-    if (includeMaxPlayers) {
-      payload.max_players = DEFAULT_MAX_PLAYERS
-    }
-
-    return supabase.from('games').insert(payload).select().single()
-  }
-
   const handleStartGame = async (quizId: string) => {
     setLoading(quizId)
     setErrorMessage(null)
 
-    let result = await createGame(quizId, true)
+    const pin = Math.random().toString(36).substring(2, 8).toUpperCase()
 
-    const missingMaxPlayersColumn =
-      result.error?.code === 'PGRST204' && result.error.message.includes('max_players')
+    const { data: game, error } = await supabase
+      .from('games')
+      .insert({
+        quiz_id: quizId,
+        host_id: user.id,
+        pin,
+        status: 'waiting',
+      })
+      .select()
+      .single()
 
-    if (missingMaxPlayersColumn) {
-      result = await createGame(quizId, false)
-    }
-
-    if (result.error || !result.data) {
-      console.error('Error creating game:', result.error)
-      setErrorMessage(result.error?.message ?? 'Unable to create game right now.')
+    if (error || !game) {
+      console.error('Error creating game:', error)
+      setErrorMessage(error?.message ?? 'Unable to create game right now.')
       setLoading(null)
       return
     }
 
-    router.push(`/host/${result.data.id}`)
+    router.push(`/host/${game.id}`)
   }
 
   return (

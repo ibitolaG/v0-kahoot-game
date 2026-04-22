@@ -1,29 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-async function loadGame(pin: string) {
-  const supabase = createAdminClient()
-
-  let result = await supabase
-    .from('games')
-    .select('id, status, max_players')
-    .eq('pin', pin)
-    .maybeSingle()
-
-  const missingMaxPlayersColumn =
-    result.error?.code === 'PGRST204' && result.error.message.includes('max_players')
-
-  if (missingMaxPlayersColumn) {
-    result = await supabase
-      .from('games')
-      .select('id, status')
-      .eq('pin', pin)
-      .maybeSingle()
-  }
-
-  return result
-}
-
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const pin = url.searchParams.get('pin')?.trim().toUpperCase()
@@ -34,7 +11,11 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient()
-  const { data: game, error } = await loadGame(pin)
+  const { data: game, error } = await supabase
+    .from('games')
+    .select('id, status')
+    .eq('pin', pin)
+    .maybeSingle()
 
   if (error || !game) {
     return NextResponse.json({ gameExists: false, error: 'Game not found.' }, { status: 404 })
@@ -51,7 +32,6 @@ export async function GET(request: Request) {
     if (existingPlayer && game.status !== 'finished') {
       return NextResponse.json({
         gameExists: true,
-        maxPlayers: game.max_players ?? null,
         rejoinAvailable: true,
       })
     }
@@ -63,7 +43,6 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     gameExists: true,
-    maxPlayers: game.max_players ?? null,
     rejoinAvailable: false,
   })
 }

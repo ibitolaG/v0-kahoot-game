@@ -1,29 +1,5 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { DEFAULT_MAX_PLAYERS } from '@/lib/gameplay'
-
-async function loadGame(pin: string) {
-  const supabase = createAdminClient()
-
-  let result = await supabase
-    .from('games')
-    .select('id, status, max_players')
-    .eq('pin', pin)
-    .single()
-
-  const missingMaxPlayersColumn =
-    result.error?.code === 'PGRST204' && result.error.message.includes('max_players')
-
-  if (missingMaxPlayersColumn) {
-    result = await supabase
-      .from('games')
-      .select('id, status')
-      .eq('pin', pin)
-      .single()
-  }
-
-  return result
-}
 
 export async function POST(request: Request) {
   try {
@@ -38,13 +14,15 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient()
 
-    const { data: game, error: gameError } = await loadGame(pin)
+    const { data: game, error: gameError } = await supabase
+      .from('games')
+      .select('id, status')
+      .eq('pin', pin)
+      .single()
 
     if (gameError || !game) {
       return NextResponse.json({ error: 'Game not found.' }, { status: 404 })
     }
-
-    const maxPlayers = game.max_players ?? DEFAULT_MAX_PLAYERS
 
     if (reconnectToken) {
       const { data: existingPlayer } = await supabase
@@ -66,15 +44,6 @@ export async function POST(request: Request) {
 
     if (game.status !== 'waiting') {
       return NextResponse.json({ error: 'This game has already started.' }, { status: 409 })
-    }
-
-    const { count } = await supabase
-      .from('players')
-      .select('id', { count: 'exact', head: true })
-      .eq('game_id', game.id)
-
-    if ((count ?? 0) >= maxPlayers) {
-      return NextResponse.json({ error: `This game is full (${maxPlayers} players max).` }, { status: 409 })
     }
 
     const token = reconnectToken || crypto.randomUUID()

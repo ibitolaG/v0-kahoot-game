@@ -39,7 +39,6 @@ export interface Game {
   host_id: string
   pin: string
   status: GameStatus
-  max_players: number
   current_question_index: number
   question_start_time: string | null
   created_at: string

@@ -1,13 +1,3 @@
-ALTER TABLE public.games
-  ADD COLUMN IF NOT EXISTS max_players INTEGER NOT NULL DEFAULT 100;
-
-ALTER TABLE public.games
-  ALTER COLUMN max_players SET DEFAULT 100;
-
-UPDATE public.games
-SET max_players = 100
-WHERE max_players IS NULL OR max_players < 100;
-
 ALTER TABLE public.players
   ADD COLUMN IF NOT EXISTS reconnect_token UUID UNIQUE;
 
