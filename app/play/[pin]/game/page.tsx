@@ -377,27 +377,43 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           </div>
         )}
 
-        {game.status === 'playing' && (
-          <div className="w-full max-w-md text-center">
-            <Trophy className="h-16 w-16 text-quiz-gold mx-auto mb-4" />
-            <h2 className="text-3xl font-bold mb-2">Leaderboard Break</h2>
+                {game.status === 'playing' && (
+          <div className="w-full max-w-4xl text-center">
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
+              <Trophy className="h-12 w-12 text-amber-300" />
+            </div>
+            <h2 className="text-4xl font-black mb-2">Leaderboard Break</h2>
             <p className="text-muted-foreground mb-6">See where you stand before the next section starts.</p>
 
-            <Card className="bg-card/50">
-              <CardContent className="py-4">
-                <div className="space-y-2">
-                  {players.slice(0, 8).map((p, index) => (
+            <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_60px_rgba(239,0,0,0.14)]">
+              <CardContent className="py-6">
+                <div className="space-y-3">
+                  {players.slice(0, 5).map((p, index) => (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between py-2 px-3 rounded ${
-                        p.id === player.id ? 'bg-primary/10' : 'bg-secondary/30'
+                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                        index === 0
+                          ? 'border-amber-300/50 bg-amber-300/15'
+                          : index === 1
+                            ? 'border-slate-300/40 bg-slate-200/10'
+                            : index === 2
+                              ? 'border-orange-400/40 bg-orange-500/10'
+                              : p.id === player.id
+                                ? 'border-primary/40 bg-primary/10'
+                                : 'border-border bg-secondary/30'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="w-7 font-bold text-primary">#{index + 1}</span>
-                        <span className={p.id === player.id ? 'font-bold' : ''}>{p.nickname}</span>
+                      <div className="flex items-center gap-4">
+                        <span className={`w-12 text-2xl font-black ${
+                          index === 0 ? 'text-amber-300' :
+                          index === 1 ? 'text-slate-200' :
+                          index === 2 ? 'text-orange-300' : 'text-primary'
+                        }`}>
+                          #{index + 1}
+                        </span>
+                        <span className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</span>
                       </div>
-                      <span className="text-muted-foreground">{p.score.toLocaleString()}</span>
+                      <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
                     </div>
                   ))}
                 </div>
@@ -407,44 +423,87 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'finished' && (
-          <div className="w-full max-w-md text-center">
-            <Trophy className="h-16 w-16 text-quiz-gold mx-auto mb-4" />
-            <h2 className="text-3xl font-bold mb-2">Game Over!</h2>
+          <div className="w-full max-w-5xl text-center">
+            <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
+              <Trophy className="h-14 w-14 text-amber-300" />
+            </div>
+            <h2 className="text-5xl font-black mb-3">Game Over!</h2>
 
-            <Card className="bg-card/50 mb-6">
+            <Card className="mb-6 border-border/60 bg-card/70">
               <CardContent className="py-6">
                 <div className="text-sm text-muted-foreground mb-1">Your final score</div>
-                <div className="text-4xl font-bold text-primary">
+                <div className="text-5xl font-black text-primary">
                   {player.score.toLocaleString()}
                 </div>
-                <div className="text-muted-foreground mt-2">
+                <div className="text-lg text-muted-foreground mt-2">
                   Position: #{players.findIndex(p => p.id === player.id) + 1} of {players.length}
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-card/50">
-              <CardContent className="py-4">
-                <h3 className="font-semibold mb-3">Final Standings</h3>
-                <div className="space-y-2">
+            <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_90px_rgba(239,0,0,0.16)]">
+              <CardContent className="py-8">
+                <div className="mb-5">
+                  <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
+                    Winner: {players[0]?.nickname ?? 'TBD'}
+                  </span>
+                </div>
+
+                <div className="mb-10 flex justify-center items-end gap-5">
+                  {[1, 0, 2].map((position) => {
+                    const p = players[position]
+                    if (!p) return null
+                    const heights = ['h-44', 'h-60', 'h-36']
+                    const styles = [
+                      'from-slate-200 to-slate-500 text-slate-950',
+                      'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
+                      'from-orange-300 to-amber-700 text-slate-950',
+                    ]
+
+                    return (
+                      <div key={p.id} className="flex w-36 flex-col items-center text-center">
+                        <div className="mb-3">
+                          <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                            {position === 0 ? 'WINNER' : `#${position + 1}`}
+                          </div>
+                          <div className="mt-1 text-2xl font-bold text-white">{p.nickname}</div>
+                          <div className="text-base text-zinc-300">{p.score.toLocaleString()} pts</div>
+                        </div>
+                        <div className={`flex w-full ${heights[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${styles[position]} pb-4 shadow-xl`}>
+                          <span className="text-5xl font-black">{position + 1}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div className="mx-auto max-w-3xl space-y-3">
                   {players.slice(0, 5).map((p, index) => (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between py-2 px-3 rounded ${
-                        p.id === player.id ? 'bg-primary/10' : ''
+                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                        index === 0
+                          ? 'border-amber-300/50 bg-amber-300/15'
+                          : index === 1
+                            ? 'border-slate-300/40 bg-slate-200/10'
+                            : index === 2
+                              ? 'border-orange-400/40 bg-orange-500/10'
+                              : p.id === player.id
+                                ? 'border-primary/40 bg-primary/10'
+                                : 'border-border bg-secondary/30'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <span className={`font-bold ${
-                          index === 0 ? 'text-quiz-gold' :
-                          index === 1 ? 'text-quiz-silver' :
-                          index === 2 ? 'text-quiz-bronze' : ''
+                      <div className="flex items-center gap-4">
+                        <span className={`w-12 text-2xl font-black ${
+                          index === 0 ? 'text-amber-300' :
+                          index === 1 ? 'text-slate-200' :
+                          index === 2 ? 'text-orange-300' : 'text-primary'
                         }`}>
                           #{index + 1}
                         </span>
-                        <span className={p.id === player.id ? 'font-bold' : ''}>{p.nickname}</span>
+                        <span className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</span>
                       </div>
-                      <span className="text-muted-foreground">{p.score.toLocaleString()}</span>
+                      <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
                     </div>
                   ))}
                 </div>

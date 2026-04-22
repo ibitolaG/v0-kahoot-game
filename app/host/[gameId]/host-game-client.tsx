@@ -556,32 +556,78 @@ function LeaderboardBreakScreen({
   onContinue: () => void
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
-  const topPlayers = sortedPlayers.slice(0, 8)
+  const topThree = sortedPlayers.slice(0, 3)
+  const topFive = sortedPlayers.slice(0, 5)
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
+  const podiumOrder = [1, 0, 2]
+  const podiumHeights = ['h-40', 'h-56', 'h-32']
+  const podiumStyles = [
+    'from-slate-200 to-slate-500 text-slate-950',
+    'from-amber-300 to-yellow-500 text-slate-950',
+    'from-orange-300 to-amber-700 text-slate-950',
+  ]
 
   return (
-    <div className="w-full max-w-3xl">
+    <div className="w-full max-w-5xl">
       <div className="text-center mb-8">
-        <Trophy className="h-14 w-14 text-quiz-gold mx-auto mb-4" />
-        <h2 className="text-4xl font-bold mb-2">Leaderboard Break</h2>
-        <p className="text-muted-foreground">
+        <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
+          <Trophy className="h-12 w-12 text-amber-300" />
+        </div>
+        <h2 className="text-5xl font-black mb-2">Leaderboard Break</h2>
+        <p className="text-lg text-muted-foreground">
           Standings after question {checkpoint} of {totalQuestions}
         </p>
       </div>
 
-      <Card className="bg-card/50 mb-8">
-        <CardContent className="py-4">
-          <div className="space-y-3">
-            {topPlayers.map((player, index) => (
+      <Card className="mb-8 border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_80px_rgba(239,0,0,0.14)]">
+        <CardContent className="py-8">
+          <div className="mb-10 flex items-end justify-center gap-4">
+            {podiumOrder.map((position) => {
+              const player = topThree[position]
+              if (!player) return null
+
+              return (
+                <div key={player.id} className="flex w-36 flex-col items-center text-center">
+                  <div className="mb-3">
+                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                      {position === 0 ? 'WINNER' : `#${position + 1}`}
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-white">{player.nickname}</div>
+                    <div className="text-base text-zinc-300">{player.score.toLocaleString()} pts</div>
+                  </div>
+                  <div className={`flex w-full ${podiumHeights[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStyles[position]} pb-4 shadow-xl`}>
+                    <span className="text-5xl font-black">{position + 1}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mx-auto max-w-3xl space-y-3">
+            {topFive.map((player, index) => (
               <div
                 key={player.id}
-                className="flex items-center justify-between rounded-xl border border-border bg-secondary/30 px-4 py-3"
+                className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                  index === 0
+                    ? 'border-amber-300/50 bg-amber-300/15'
+                    : index === 1
+                      ? 'border-slate-300/40 bg-slate-200/10'
+                      : index === 2
+                        ? 'border-orange-400/40 bg-orange-500/10'
+                        : 'border-border bg-secondary/30'
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <span className="w-8 text-lg font-bold text-primary">#{index + 1}</span>
-                  <span className="font-semibold">{player.nickname}</span>
+                <div className="flex items-center gap-4">
+                  <span className={`w-12 text-2xl font-black ${
+                    index === 0 ? 'text-amber-300' :
+                    index === 1 ? 'text-slate-200' :
+                    index === 2 ? 'text-orange-300' : 'text-primary'
+                  }`}>
+                    #{index + 1}
+                  </span>
+                  <span className="text-xl font-bold text-white">{player.nickname}</span>
                 </div>
-                <span className="text-muted-foreground">{player.score.toLocaleString()} pts</span>
+                <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
               </div>
             ))}
           </div>
@@ -608,61 +654,86 @@ function FinalScreen({
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const topThree = sortedPlayers.slice(0, 3)
-  const rest = sortedPlayers.slice(3)
-
-  const medals = ['text-quiz-gold', 'text-quiz-silver', 'text-quiz-bronze']
+  const topFive = sortedPlayers.slice(0, 5)
+  const podiumOrder = [1, 0, 2]
+  const podiumHeights = ['h-52', 'h-72', 'h-40']
+  const podiumStyles = [
+    'from-slate-200 to-slate-500 text-slate-950',
+    'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
+    'from-orange-300 to-amber-700 text-slate-950',
+  ]
 
   return (
-    <div className="w-full max-w-2xl text-center">
+    <div className="w-full max-w-5xl text-center">
       <div className="mb-8">
-        <Trophy className="h-16 w-16 text-quiz-gold mx-auto mb-4" />
-        <h2 className="text-4xl font-bold">Final Results</h2>
+        <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
+          <Trophy className="h-14 w-14 text-amber-300" />
+        </div>
+        <h2 className="text-6xl font-black">Final Results</h2>
       </div>
 
-      {/* Podium */}
-      <div className="flex justify-center items-end gap-4 mb-8">
-        {[1, 0, 2].map((position) => {
-          const player = topThree[position]
-          if (!player) return null
-          const heights = ['h-32', 'h-40', 'h-24']
-          return (
-            <div key={position} className="flex flex-col items-center">
-              <div className="text-4xl mb-2">{position === 0 ? '👑' : ''}</div>
-              <div className={`font-bold text-lg ${medals[position]}`}>
-                {player.nickname}
-              </div>
-              <div className="text-muted-foreground text-sm mb-2">
-                {player.score.toLocaleString()} pts
-              </div>
-              <div className={`w-24 ${heights[position]} bg-primary/20 rounded-t-lg flex items-end justify-center pb-2`}>
-                <span className={`text-2xl font-bold ${medals[position]}`}>
-                  {position + 1}
-                </span>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <Card className="mb-8 border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_100px_rgba(239,0,0,0.16)]">
+        <CardContent className="py-10">
+          <div className="mb-6">
+            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
+              Winner: {topThree[0]?.nickname ?? 'TBD'}
+            </span>
+          </div>
 
-      {/* Rest of players */}
-      {rest.length > 0 && (
-        <Card className="bg-card/50 mb-8">
-          <CardContent className="py-4">
-            {rest.map((player, index) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between py-2 border-b border-border last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-muted-foreground w-6">{index + 4}</span>
-                  <span className="font-medium">{player.nickname}</span>
+          <div className="mb-12 flex justify-center items-end gap-5">
+            {podiumOrder.map((position) => {
+              const player = topThree[position]
+              if (!player) return null
+              return (
+                <div key={player.id} className="flex w-40 flex-col items-center">
+                  <div className="mb-4">
+                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                      {position === 0 ? 'WINNER' : `#${position + 1}`}
+                    </div>
+                    <div className="mt-1 text-3xl font-black text-white">{player.nickname}</div>
+                    <div className="text-lg text-zinc-300">{player.score.toLocaleString()} pts</div>
+                  </div>
+                  <div className={`flex w-full ${podiumHeights[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStyles[position]} pb-5 shadow-2xl`}>
+                    <span className="text-6xl font-black">{position + 1}</span>
+                  </div>
                 </div>
-                <span className="text-muted-foreground">{player.score.toLocaleString()} pts</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+              )
+            })}
+          </div>
+
+          <div className="mx-auto max-w-3xl">
+            <h3 className="mb-4 text-2xl font-black text-white">Top 5 Standings</h3>
+            <div className="space-y-3">
+              {topFive.map((player, index) => (
+                <div
+                  key={player.id}
+                  className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                    index === 0
+                      ? 'border-amber-300/50 bg-amber-300/15'
+                      : index === 1
+                        ? 'border-slate-300/40 bg-slate-200/10'
+                        : index === 2
+                          ? 'border-orange-400/40 bg-orange-500/10'
+                          : 'border-border bg-secondary/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className={`w-12 text-2xl font-black ${
+                      index === 0 ? 'text-amber-300' :
+                      index === 1 ? 'text-slate-200' :
+                      index === 2 ? 'text-orange-300' : 'text-primary'
+                    }`}>
+                      #{index + 1}
+                    </span>
+                    <span className="text-xl font-bold text-white">{player.nickname}</span>
+                  </div>
+                  <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Button size="lg" onClick={onEnd} className="text-lg px-8">
         End Game
