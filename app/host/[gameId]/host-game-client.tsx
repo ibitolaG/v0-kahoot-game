@@ -560,10 +560,10 @@ function LeaderboardBreakScreen({
   const topFive = sortedPlayers.slice(0, 5)
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
   const podiumOrder = [1, 0, 2]
-  const podiumHeights = ['h-40', 'h-56', 'h-32']
-  const podiumStyles = [
-    'from-slate-200 to-slate-500 text-slate-950',
+  const podiumHeightsByRank = ['h-56', 'h-40', 'h-32']
+  const podiumStylesByRank = [
     'from-amber-300 to-yellow-500 text-slate-950',
+    'from-slate-200 to-slate-500 text-slate-950',
     'from-orange-300 to-amber-700 text-slate-950',
   ]
 
@@ -595,7 +595,7 @@ function LeaderboardBreakScreen({
                     <div className="mt-1 text-2xl font-bold text-white">{player.nickname}</div>
                     <div className="text-base text-zinc-300">{player.score.toLocaleString()} pts</div>
                   </div>
-                  <div className={`flex w-full ${podiumHeights[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStyles[position]} pb-4 shadow-xl`}>
+                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl`}>
                     <span className="text-5xl font-black">{position + 1}</span>
                   </div>
                 </div>
@@ -656,10 +656,10 @@ function FinalScreen({
   const topThree = sortedPlayers.slice(0, 3)
   const topFive = sortedPlayers.slice(0, 5)
   const podiumOrder = [1, 0, 2]
-  const podiumHeights = ['h-52', 'h-72', 'h-40']
-  const podiumStyles = [
-    'from-slate-200 to-slate-500 text-slate-950',
+  const podiumHeightsByRank = ['h-72', 'h-52', 'h-40']
+  const podiumStylesByRank = [
     'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
+    'from-slate-200 to-slate-500 text-slate-950',
     'from-orange-300 to-amber-700 text-slate-950',
   ]
 
@@ -693,7 +693,7 @@ function FinalScreen({
                     <div className="mt-1 text-3xl font-black text-white">{player.nickname}</div>
                     <div className="text-lg text-zinc-300">{player.score.toLocaleString()} pts</div>
                   </div>
-                  <div className={`flex w-full ${podiumHeights[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStyles[position]} pb-5 shadow-2xl`}>
+                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStylesByRank[position]} pb-5 shadow-2xl`}>
                     <span className="text-6xl font-black">{position + 1}</span>
                   </div>
                 </div>

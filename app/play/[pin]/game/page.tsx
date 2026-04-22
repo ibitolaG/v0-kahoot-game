@@ -453,10 +453,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                   {[1, 0, 2].map((position) => {
                     const p = players[position]
                     if (!p) return null
-                    const heights = ['h-44', 'h-60', 'h-36']
-                    const styles = [
-                      'from-slate-200 to-slate-500 text-slate-950',
+                    const heightsByRank = ['h-60', 'h-44', 'h-36']
+                    const stylesByRank = [
                       'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
+                      'from-slate-200 to-slate-500 text-slate-950',
                       'from-orange-300 to-amber-700 text-slate-950',
                     ]
 
@@ -469,7 +469,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                           <div className="mt-1 text-2xl font-bold text-white">{p.nickname}</div>
                           <div className="text-base text-zinc-300">{p.score.toLocaleString()} pts</div>
                         </div>
-                        <div className={`flex w-full ${heights[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${styles[position]} pb-4 shadow-xl`}>
+                        <div className={`flex w-full ${heightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${stylesByRank[position]} pb-4 shadow-xl`}>
                           <span className="text-5xl font-black">{position + 1}</span>
                         </div>
                       </div>
