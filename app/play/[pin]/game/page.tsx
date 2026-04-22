@@ -507,6 +507,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     </div>
                   ))}
                 </div>
+
+                <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/30 bg-primary/10 px-5 py-4 text-left">
+                  <div className="text-sm font-semibold uppercase tracking-[0.2em] text-primary/80">Your position</div>
+                  <div className="mt-2 flex items-center justify-between gap-4">
+                    <span className="text-xl font-bold text-white">
+                      #{players.findIndex(p => p.id === player.id) + 1} of {players.length}
+                    </span>
+                    <span className="text-lg font-semibold text-zinc-200">{player.score.toLocaleString()} pts</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>
