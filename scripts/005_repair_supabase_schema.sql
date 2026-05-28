@@ -15,9 +15,13 @@ CREATE TABLE IF NOT EXISTS public.quizzes (
   host_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
+  break_interval INTEGER NOT NULL DEFAULT 4,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.quizzes
+  ADD COLUMN IF NOT EXISTS break_interval INTEGER NOT NULL DEFAULT 4;
 
 CREATE TABLE IF NOT EXISTS public.questions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

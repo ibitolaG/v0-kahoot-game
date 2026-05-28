@@ -13,6 +13,7 @@ interface HostGameClientProps {
   initialGame: Game & { 
     quiz: { 
       title: string
+      break_interval?: number | null
       questions: Question[] 
     } 
   }
@@ -28,7 +29,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 
   const questions = game.quiz.questions
   const currentQuestion = questions[game.current_question_index]
-  const quarterSize = Math.max(1, Math.ceil(questions.length / 4))
+  const breakInterval = Math.max(0, game.quiz.break_interval ?? 4)
   const currentPlayerIds = useMemo(() => new Set(players.map((player) => player.id)), [players])
   const currentGameAnswers = useMemo(() => {
     const latestAnswersByPlayer = new Map<string, Answer>()
@@ -42,8 +43,8 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   }, [answers, currentPlayerIds])
 
   const shouldShowLeaderboardBreak = useCallback(
-    (nextIndex: number) => nextIndex > 0 && nextIndex < questions.length && nextIndex % quarterSize === 0,
-    [questions.length, quarterSize]
+    (nextIndex: number) => breakInterval > 0 && nextIndex > 0 && nextIndex < questions.length && nextIndex % breakInterval === 0,
+    [questions.length, breakInterval]
   )
 
   const fetchPlayers = useCallback(async () => {

@@ -19,6 +19,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   const [selectedOption, setSelectedOption] = useState<number | null>(null)
   const [hasAnswered, setHasAnswered] = useState(false)
   const [lastAnswer, setLastAnswer] = useState<{ correct: boolean; points: number } | null>(null)
+  const [submittingAnswer, setSubmittingAnswer] = useState(false)
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -110,6 +111,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
             setSelectedOption(null)
             setHasAnswered(false)
             setLastAnswer(null)
+            setSubmittingAnswer(false)
           }
         }
       )
@@ -166,13 +168,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
     setSelectedOption(optionIndex)
     setHasAnswered(true)
+    setSubmittingAnswer(true)
+    setError(null)
 
     const options = currentQuestion.options as QuestionOption[]
     const fallbackCorrect = options[optionIndex]?.isCorrect || false
-    setLastAnswer({
-      correct: fallbackCorrect,
-      points: 0,
-    })
 
     const response = await fetch('/api/play/answer', {
       method: 'POST',
@@ -189,6 +189,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       setHasAnswered(false)
       setSelectedOption(null)
       setLastAnswer(null)
+      setSubmittingAnswer(false)
       setError(data?.error || 'Failed to submit answer.')
       return
     }
@@ -202,6 +203,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       correct: typeof data?.correct === 'boolean' ? data.correct : fallbackCorrect,
       points: typeof data?.points === 'number' ? data.points : 0,
     })
+    setSubmittingAnswer(false)
   }, [hasAnswered, currentQuestion, player, game?.question_start_time, supabase])
 
   if (loading) {
@@ -308,6 +310,14 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                 <p className="text-muted-foreground">Better luck next time</p>
               </>
             )}
+          </div>
+        )}
+
+        {game.status === 'question' && hasAnswered && submittingAnswer && !lastAnswer && (
+          <div className="text-center">
+            <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto mb-4" />
+            <h2 className="text-3xl font-bold mb-2">Answer locked in</h2>
+            <p className="text-muted-foreground">Calculating your points...</p>
           </div>
         )}
 

@@ -55,6 +55,7 @@ const TRUE_FALSE_OPTIONS: QuestionOption[] = [
 export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
   const [title, setTitle] = useState(existingQuiz?.title || '')
   const [description, setDescription] = useState(existingQuiz?.description || '')
+  const [breakInterval, setBreakInterval] = useState(existingQuiz?.break_interval ?? 4)
   const [questions, setQuestions] = useState<QuestionForm[]>(
     existingQuiz?.questions.map(q => ({
       id: q.id,
@@ -173,6 +174,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
         if (isWrapped) {
           if (raw.title) setTitle(raw.title)
           if (raw.description) setDescription(raw.description)
+          if (typeof raw.break_interval === 'number') setBreakInterval(raw.break_interval)
         }
         setQuestions(parsed)
         setError(null)
@@ -187,6 +189,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
     const template = {
       title: 'My Quiz Title',
       description: 'Optional description',
+      break_interval: 4,
       questions: [
         {
           question_text: 'What is the capital of France?',
@@ -282,7 +285,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
         // Update existing quiz
         const { error: quizError } = await supabase
           .from('quizzes')
-          .update({ title, description, updated_at: new Date().toISOString() })
+          .update({ title, description, break_interval: breakInterval, updated_at: new Date().toISOString() })
           .eq('id', existingQuiz.id)
 
         if (quizError) throw quizError
@@ -293,7 +296,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
         // Create new quiz
         const { data: quiz, error: quizError } = await supabase
           .from('quizzes')
-          .insert({ host_id: userId, title, description })
+          .insert({ host_id: userId, title, description, break_interval: breakInterval })
           .select()
           .single()
 
@@ -389,6 +392,25 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
                   className="bg-secondary resize-none"
                   rows={3}
                 />
+              </Field>
+              <Field>
+                <FieldLabel>Leaderboard Break</FieldLabel>
+                <Select
+                  value={breakInterval.toString()}
+                  onValueChange={(value) => setBreakInterval(parseInt(value))}
+                >
+                  <SelectTrigger className="bg-secondary">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">No breaks</SelectItem>
+                    <SelectItem value="2">Every 2 questions</SelectItem>
+                    <SelectItem value="3">Every 3 questions</SelectItem>
+                    <SelectItem value="4">Every 4 questions</SelectItem>
+                    <SelectItem value="5">Every 5 questions</SelectItem>
+                    <SelectItem value="10">Every 10 questions</SelectItem>
+                  </SelectContent>
+                </Select>
               </Field>
             </FieldGroup>
           </CardContent>

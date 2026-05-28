@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { HostGameClient } from './host-game-client'
+import type { Question } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,7 +28,7 @@ export default async function HostGamePage({ params }: { params: Promise<{ gameI
 
   // Sort questions by order_index
   if (game.quiz?.questions) {
-    game.quiz.questions.sort((a, b) => a.order_index - b.order_index)
+    ;(game.quiz.questions as Question[]).sort((a, b) => a.order_index - b.order_index)
   }
 
   return <HostGameClient initialGame={game} />

@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { QuizBuilder } from '@/components/quiz-builder'
+import type { Question } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ export default async function EditQuizPage({ params }: { params: Promise<{ id: s
   }
 
   // Sort questions by order_index
-  const sortedQuestions = quiz.questions?.sort((a, b) => a.order_index - b.order_index) || []
+  const sortedQuestions = (quiz.questions as Question[] | undefined)?.sort((a, b) => a.order_index - b.order_index) || []
 
   return <QuizBuilder userId={user.id} existingQuiz={{ ...quiz, questions: sortedQuestions }} />
 }

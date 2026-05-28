@@ -9,6 +9,7 @@ export interface Quiz {
   host_id: string
   title: string
   description: string | null
+  break_interval: number
   created_at: string
   updated_at: string
   questions?: Question[]
