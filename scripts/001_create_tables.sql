@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS public.players (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES public.games(id) ON DELETE CASCADE,
   nickname TEXT NOT NULL,
+  team_code TEXT NOT NULL DEFAULT 'GENERAL',
   reconnect_token UUID UNIQUE,
   score INTEGER NOT NULL DEFAULT 0,
   joined_at TIMESTAMPTZ DEFAULT NOW()

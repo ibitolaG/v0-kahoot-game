@@ -4,16 +4,27 @@ import { createAdminClient } from '@/lib/supabase/admin'
 async function findExistingPlayer(supabase: ReturnType<typeof createAdminClient>, gameId: string, reconnectToken: string) {
   let result = await supabase
     .from('players')
-    .select('id, nickname')
+    .select('id, nickname, team_code')
     .eq('game_id', gameId)
     .eq('reconnect_token', reconnectToken)
     .maybeSingle()
 
-  const missingReconnectColumn =
-    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+  const errorMessage = result.error?.message ?? ''
+  const missingColumn = result.error?.code === 'PGRST204'
+  const missingReconnectColumn = missingColumn && errorMessage.includes('reconnect_token')
+  const missingTeamColumn = missingColumn && errorMessage.includes('team_code')
 
   if (missingReconnectColumn) {
     return { data: null, error: null }
+  }
+
+  if (missingTeamColumn) {
+    result = await supabase
+      .from('players')
+      .select('id, nickname')
+      .eq('game_id', gameId)
+      .eq('reconnect_token', reconnectToken)
+      .maybeSingle()
   }
 
   return result
@@ -46,6 +57,8 @@ export async function GET(request: Request) {
       return NextResponse.json({
         gameExists: true,
         rejoinAvailable: true,
+        nickname: existingPlayer.nickname,
+        teamCode: existingPlayer.team_code ?? null,
       })
     }
   }

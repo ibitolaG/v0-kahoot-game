@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect, use, useCallback, useRef } from 'react'
+import { useState, useEffect, use, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption } from '@/lib/types'
 import { Brand } from '@/components/brand'
+import { getPlayerTeamCode, getTeamStandings } from '@/lib/gameplay'
 
 export default function PlayerGamePage({ params }: { params: Promise<{ pin: string }> }) {
   const { pin } = use(params)
@@ -32,6 +33,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   const currentQuestion: Question | null = game
     ? (questions[game.current_question_index] ?? null)
     : null
+  const teamStandings = useMemo(() => getTeamStandings(players), [players])
 
   // Initial data fetch
   useEffect(() => {
@@ -226,6 +228,8 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   }
 
   if (!game || !player) return null
+  const playerTeamCode = getPlayerTeamCode(player)
+  const playerTeamRank = teamStandings.findIndex((team) => team.code === playerTeamCode) + 1
 
   const optionColors = [
     'bg-red-500 hover:bg-red-600 active:bg-red-700',
@@ -240,7 +244,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Brand showText={false} logoClassName="h-6 w-auto" />
-            <span className="font-bold">{player.nickname}</span>
+            <div>
+              <div className="font-bold leading-tight">{player.nickname}</div>
+              <div className="font-mono text-xs text-muted-foreground">{playerTeamCode}</div>
+            </div>
           </div>
           <div className="text-primary font-bold">
             {player.score.toLocaleString()} pts
@@ -387,28 +394,28 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           </div>
         )}
 
-                {game.status === 'playing' && (
+        {game.status === 'playing' && (
           <div className="w-full max-w-4xl text-center">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
               <Trophy className="h-12 w-12 text-amber-300" />
             </div>
             <h2 className="text-4xl font-black mb-2">Leaderboard Break</h2>
-            <p className="text-muted-foreground mb-6">See where you stand before the next section starts.</p>
+            <p className="text-muted-foreground mb-6">Team standings first, individual standings just below.</p>
 
             <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_60px_rgba(239,0,0,0.14)]">
               <CardContent className="py-6">
-                <div className="space-y-3">
-                  {players.slice(0, 5).map((p, index) => (
+                <div className="mb-6 space-y-3">
+                  {teamStandings.slice(0, 5).map((team, index) => (
                     <div
-                      key={p.id}
+                      key={team.code}
                       className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
                         index === 0
                           ? 'border-amber-300/50 bg-amber-300/15'
                           : index === 1
                             ? 'border-slate-300/40 bg-slate-200/10'
-                            : index === 2
+                          : index === 2
                               ? 'border-orange-400/40 bg-orange-500/10'
-                              : p.id === player.id
+                              : team.code === playerTeamCode
                                 ? 'border-primary/40 bg-primary/10'
                                 : 'border-border bg-secondary/30'
                       }`}
@@ -421,7 +428,35 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         }`}>
                           #{index + 1}
                         </span>
-                        <span className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</span>
+                        <div className="text-left">
+                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>
+                            {team.code}
+                          </div>
+                          <div className="text-sm text-zinc-400">{team.playerCount} players</div>
+                        </div>
+                      </div>
+                      <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Individual top 5
+                  </div>
+                  {players.slice(0, 5).map((p, index) => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                        p.id === player.id ? 'border-primary/40 bg-primary/10' : 'border-border bg-secondary/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
+                        <div className="text-left">
+                          <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
+                          <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>
+                        </div>
                       </div>
                       <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
                     </div>
@@ -448,6 +483,9 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                 <div className="text-lg text-muted-foreground mt-2">
                   Position: #{players.findIndex(p => p.id === player.id) + 1} of {players.length}
                 </div>
+                <div className="text-sm text-muted-foreground mt-1">
+                  Team {playerTeamCode}: #{playerTeamRank || '-'} of {teamStandings.length}
+                </div>
               </CardContent>
             </Card>
 
@@ -455,14 +493,14 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               <CardContent className="py-8">
                 <div className="mb-5">
                   <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
-                    Winner: {players[0]?.nickname ?? 'TBD'}
+                    Winning Team: {teamStandings[0]?.code ?? 'TBD'}
                   </span>
                 </div>
 
                 <div className="mb-10 flex justify-center items-end gap-5">
                   {[1, 0, 2].map((position) => {
-                    const p = players[position]
-                    if (!p) return null
+                    const team = teamStandings[position]
+                    if (!team) return null
                     const heightsByRank = ['h-60', 'h-44', 'h-36']
                     const stylesByRank = [
                       'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
@@ -471,13 +509,13 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     ]
 
                     return (
-                      <div key={p.id} className="flex w-36 flex-col items-center text-center">
+                      <div key={team.code} className="flex w-36 flex-col items-center text-center">
                         <div className="mb-3">
                           <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                             {position === 0 ? 'WINNER' : `#${position + 1}`}
                           </div>
-                          <div className="mt-1 text-2xl font-bold text-white">{p.nickname}</div>
-                          <div className="text-base text-zinc-300">{p.score.toLocaleString()} pts</div>
+                          <div className="mt-1 text-2xl font-bold text-white">{team.code}</div>
+                          <div className="text-base text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
                         </div>
                         <div className={`flex w-full ${heightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${stylesByRank[position]} pb-4 shadow-xl`}>
                           <span className="text-5xl font-black">{position + 1}</span>
@@ -487,18 +525,21 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                   })}
                 </div>
 
-                <div className="mx-auto max-w-3xl space-y-3">
-                  {players.slice(0, 5).map((p, index) => (
+                <div className="mx-auto mb-6 max-w-3xl space-y-3">
+                  <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Team standings
+                  </div>
+                  {teamStandings.slice(0, 5).map((team, index) => (
                     <div
-                      key={p.id}
+                      key={team.code}
                       className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
                         index === 0
                           ? 'border-amber-300/50 bg-amber-300/15'
                           : index === 1
                             ? 'border-slate-300/40 bg-slate-200/10'
-                            : index === 2
+                          : index === 2
                               ? 'border-orange-400/40 bg-orange-500/10'
-                              : p.id === player.id
+                              : team.code === playerTeamCode
                                 ? 'border-primary/40 bg-primary/10'
                                 : 'border-border bg-secondary/30'
                       }`}
@@ -511,7 +552,33 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         }`}>
                           #{index + 1}
                         </span>
-                        <span className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</span>
+                        <div className="text-left">
+                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{team.code}</div>
+                          <div className="text-sm text-zinc-400">{team.playerCount} players</div>
+                        </div>
+                      </div>
+                      <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mx-auto max-w-3xl space-y-3">
+                  <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Individual top 5
+                  </div>
+                  {players.slice(0, 5).map((p, index) => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                        p.id === player.id ? 'border-primary/40 bg-primary/10' : 'border-border bg-secondary/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
+                        <div className="text-left">
+                          <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
+                          <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>
+                        </div>
                       </div>
                       <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
                     </div>

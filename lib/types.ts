@@ -51,6 +51,7 @@ export interface Player {
   id: string
   game_id: string
   nickname: string
+  team_code?: string | null
   score: number
   reconnect_token?: string
   joined_at: string

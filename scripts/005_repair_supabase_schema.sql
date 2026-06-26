@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS public.players (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   game_id UUID NOT NULL REFERENCES public.games(id) ON DELETE CASCADE,
   nickname TEXT NOT NULL,
+  team_code TEXT NOT NULL DEFAULT 'GENERAL',
   reconnect_token UUID UNIQUE,
   score INTEGER NOT NULL DEFAULT 0,
   joined_at TIMESTAMPTZ DEFAULT NOW()
@@ -61,9 +62,15 @@ CREATE TABLE IF NOT EXISTS public.players (
 ALTER TABLE public.players
   ADD COLUMN IF NOT EXISTS reconnect_token UUID UNIQUE;
 
+ALTER TABLE public.players
+  ADD COLUMN IF NOT EXISTS team_code TEXT NOT NULL DEFAULT 'GENERAL';
+
 CREATE UNIQUE INDEX IF NOT EXISTS players_reconnect_token_key
   ON public.players (reconnect_token)
   WHERE reconnect_token IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS players_game_team_code_idx
+  ON public.players (game_id, team_code);
 
 CREATE TABLE IF NOT EXISTS public.answers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

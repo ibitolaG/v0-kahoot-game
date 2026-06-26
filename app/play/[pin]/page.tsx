@@ -13,6 +13,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
   const { pin } = use(params)
   const normalizedPin = pin.toUpperCase()
   const [nickname, setNickname] = useState('')
+  const [teamCode, setTeamCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
@@ -20,6 +21,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
   const router = useRouter()
   const storageKey = `quizblitz:${normalizedPin}:reconnect-token`
   const nicknameStorageKey = `quizblitz:${normalizedPin}:nickname`
+  const teamStorageKey = `quizblitz:${normalizedPin}:team-code`
 
   useEffect(() => {
     const checkGame = async () => {
@@ -36,9 +38,13 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
         setError(null)
         setGameExists(true)
         if (data?.rejoinAvailable) {
-          const savedNickname = localStorage.getItem(nicknameStorageKey)
+          const savedNickname = data.nickname || localStorage.getItem(nicknameStorageKey)
+          const savedTeamCode = data.teamCode || localStorage.getItem(teamStorageKey)
           if (savedNickname) {
             setNickname(savedNickname)
+          }
+          if (savedTeamCode) {
+            setTeamCode(savedTeamCode)
           }
         }
       } else {
@@ -49,16 +55,23 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
     }
 
     checkGame()
-  }, [normalizedPin, storageKey, nicknameStorageKey])
+  }, [normalizedPin, storageKey, nicknameStorageKey, teamStorageKey])
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault()
     const reconnectToken = localStorage.getItem(storageKey)
     const savedNickname = localStorage.getItem(nicknameStorageKey)
+    const savedTeamCode = localStorage.getItem(teamStorageKey)
     const effectiveNickname = nickname.trim() || savedNickname || ''
+    const effectiveTeamCode = (teamCode.trim() || savedTeamCode || '').toUpperCase().replace(/\s+/g, '-').slice(0, 20)
 
     if (!effectiveNickname) {
       setError('Please enter a nickname')
+      return
+    }
+
+    if (!effectiveTeamCode) {
+      setError('Please enter your team code')
       return
     }
 
@@ -71,6 +84,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
       body: JSON.stringify({
         pin: normalizedPin,
         nickname: effectiveNickname,
+        teamCode: effectiveTeamCode,
         reconnectToken,
       }),
     })
@@ -89,6 +103,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
       localStorage.removeItem(storageKey)
     }
     localStorage.setItem(nicknameStorageKey, effectiveNickname)
+    localStorage.setItem(teamStorageKey, data.teamCode || effectiveTeamCode)
     router.push(`/play/${normalizedPin}/game?player=${data.playerId}`)
   }
 
@@ -135,6 +150,16 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
                 className="text-center text-xl h-14 bg-secondary"
                 maxLength={20}
                 autoFocus
+              />
+
+              <Input
+                type="text"
+                placeholder="Team code e.g. YOUTH"
+                value={teamCode}
+                onChange={(e) => setTeamCode(e.target.value.toUpperCase().replace(/\s+/g, '-'))}
+                className="text-center text-xl h-14 bg-secondary font-mono tracking-wider"
+                maxLength={20}
+                autoCapitalize="characters"
               />
 
               {error && (

@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Users, Play, ChevronRight, Trophy, X } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types'
 import { Brand } from '@/components/brand'
+import { getPlayerTeamCode, getTeamStandings, type TeamStanding } from '@/lib/gameplay'
 
 interface HostGameClientProps {
   initialGame: Game & { 
@@ -29,6 +30,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 
   const questions = game.quiz.questions
   const currentQuestion = questions[game.current_question_index]
+  const teamStandings = useMemo(() => getTeamStandings(players), [players])
   const breakInterval = Math.max(0, game.quiz.break_interval ?? 4)
   const currentPlayerIds = useMemo(() => new Set(players.map((player) => player.id)), [players])
   const currentGameAnswers = useMemo(() => {
@@ -278,7 +280,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Users className="h-5 w-5" />
-              <span>{players.length} players</span>
+              <span>{players.length} players - {teamStandings.length} teams</span>
             </div>
             <Button variant="ghost" size="icon" onClick={endGame}>
               <X className="h-5 w-5" />
@@ -293,6 +295,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
           <WaitingScreen 
             pin={game.pin} 
             players={players} 
+            teams={teamStandings}
             onStart={startGame}
             canStart={players.length > 0}
           />
@@ -340,11 +343,13 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 function WaitingScreen({ 
   pin, 
   players, 
+  teams,
   onStart,
   canStart 
 }: { 
   pin: string
   players: Player[]
+  teams: TeamStanding[]
   onStart: () => void
   canStart: boolean
 }) {
@@ -356,25 +361,45 @@ function WaitingScreen({
           <h2 className="text-6xl md:text-8xl font-mono font-bold tracking-widest text-primary mb-4">
             {pin}
           </h2>
-          <p className="text-muted-foreground">Enter this PIN to join the game</p>
+          <p className="text-muted-foreground">Enter this PIN and your team code to join</p>
         </CardContent>
       </Card>
 
       <div className="mb-8">
-        <h3 className="text-xl font-semibold mb-4">Players ({players.length})</h3>
-        <div className="flex flex-wrap justify-center gap-2">
-          {players.map((player) => (
-            <div
-              key={player.id}
-              className="px-4 py-2 bg-secondary rounded-full text-sm font-medium"
-            >
-              {player.nickname}
+        <h3 className="text-xl font-semibold mb-4">Teams ({teams.length}) - Players ({players.length})</h3>
+        {teams.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {teams.map((team) => (
+              <div key={team.code} className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-left">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-mono text-lg font-black text-primary">{team.code}</span>
+                  <span className="text-sm text-muted-foreground">{team.playerCount} players</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {team.players.map((player) => (
+                    <span key={player.id} className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">
+                      {player.nickname}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-wrap justify-center gap-2">
+            {players.map((player) => (
+              <div
+                key={player.id}
+                className="px-4 py-2 bg-secondary rounded-full text-sm font-medium"
+              >
+                {player.nickname}
+              </div>
+            ))}
+            {players.length === 0 && (
+              <p className="text-muted-foreground">Waiting for players to join...</p>
+            )}
             </div>
-          ))}
-          {players.length === 0 && (
-            <p className="text-muted-foreground">Waiting for players to join...</p>
-          )}
-        </div>
+        )}
       </div>
 
       <Button 
@@ -557,8 +582,10 @@ function LeaderboardBreakScreen({
   onContinue: () => void
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
-  const topThree = sortedPlayers.slice(0, 3)
   const topFive = sortedPlayers.slice(0, 5)
+  const teamStandings = getTeamStandings(players)
+  const topThreeTeams = teamStandings.slice(0, 3)
+  const topFiveTeams = teamStandings.slice(0, 5)
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
   const podiumOrder = [1, 0, 2]
   const podiumHeightsByRank = ['h-56', 'h-40', 'h-32']
@@ -584,17 +611,17 @@ function LeaderboardBreakScreen({
         <CardContent className="py-8">
           <div className="mb-10 flex items-end justify-center gap-4">
             {podiumOrder.map((position) => {
-              const player = topThree[position]
-              if (!player) return null
+              const team = topThreeTeams[position]
+              if (!team) return null
 
               return (
-                <div key={player.id} className="flex w-36 flex-col items-center text-center">
+                <div key={team.code} className="flex w-40 flex-col items-center text-center">
                   <div className="mb-3">
                     <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-2xl font-bold text-white">{player.nickname}</div>
-                    <div className="text-base text-zinc-300">{player.score.toLocaleString()} pts</div>
+                    <div className="mt-1 text-2xl font-bold text-white">{team.code}</div>
+                    <div className="text-base text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
                   </div>
                   <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl`}>
                     <span className="text-5xl font-black">{position + 1}</span>
@@ -604,7 +631,44 @@ function LeaderboardBreakScreen({
             })}
           </div>
 
+          <div className="mx-auto mb-8 max-w-3xl space-y-3">
+            {topFiveTeams.map((team, index) => (
+              <div
+                key={team.code}
+                className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                  index === 0
+                    ? 'border-amber-300/50 bg-amber-300/15'
+                    : index === 1
+                      ? 'border-slate-300/40 bg-slate-200/10'
+                      : index === 2
+                        ? 'border-orange-400/40 bg-orange-500/10'
+                        : 'border-border bg-secondary/30'
+                }`}
+              >
+                <div className="flex items-center gap-4">
+                  <span className={`w-12 text-2xl font-black ${
+                    index === 0 ? 'text-amber-300' :
+                    index === 1 ? 'text-slate-200' :
+                    index === 2 ? 'text-orange-300' : 'text-primary'
+                  }`}>
+                    #{index + 1}
+                  </span>
+                  <div>
+                    <div className="text-xl font-bold text-white">{team.code}</div>
+                    <div className="text-sm text-zinc-400">
+                      {team.playerCount} players - {team.totalScore.toLocaleString()} total
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg pts</span>
+              </div>
+            ))}
+          </div>
+
           <div className="mx-auto max-w-3xl space-y-3">
+            <h3 className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Individual top 5
+            </h3>
             {topFive.map((player, index) => (
               <div
                 key={player.id}
@@ -626,7 +690,10 @@ function LeaderboardBreakScreen({
                   }`}>
                     #{index + 1}
                   </span>
-                  <span className="text-xl font-bold text-white">{player.nickname}</span>
+                  <div>
+                    <div className="text-xl font-bold text-white">{player.nickname}</div>
+                    <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>
+                  </div>
                 </div>
                 <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
               </div>
@@ -654,8 +721,10 @@ function FinalScreen({
   onEnd: () => void 
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
-  const topThree = sortedPlayers.slice(0, 3)
   const topFive = sortedPlayers.slice(0, 5)
+  const teamStandings = getTeamStandings(players)
+  const topThreeTeams = teamStandings.slice(0, 3)
+  const topFiveTeams = teamStandings.slice(0, 5)
   const podiumOrder = [1, 0, 2]
   const podiumHeightsByRank = ['h-72', 'h-52', 'h-40']
   const podiumStylesByRank = [
@@ -677,22 +746,22 @@ function FinalScreen({
         <CardContent className="py-10">
           <div className="mb-6">
             <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
-              Winner: {topThree[0]?.nickname ?? 'TBD'}
+              Winning Team: {topThreeTeams[0]?.code ?? 'TBD'}
             </span>
           </div>
 
           <div className="mb-12 flex justify-center items-end gap-5">
             {podiumOrder.map((position) => {
-              const player = topThree[position]
-              if (!player) return null
+              const team = topThreeTeams[position]
+              if (!team) return null
               return (
-                <div key={player.id} className="flex w-40 flex-col items-center">
+                <div key={team.code} className="flex w-40 flex-col items-center">
                   <div className="mb-4">
                     <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-3xl font-black text-white">{player.nickname}</div>
-                    <div className="text-lg text-zinc-300">{player.score.toLocaleString()} pts</div>
+                    <div className="mt-1 text-3xl font-black text-white">{team.code}</div>
+                    <div className="text-lg text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
                   </div>
                   <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStylesByRank[position]} pb-5 shadow-2xl`}>
                     <span className="text-6xl font-black">{position + 1}</span>
@@ -703,11 +772,11 @@ function FinalScreen({
           </div>
 
           <div className="mx-auto max-w-3xl">
-            <h3 className="mb-4 text-2xl font-black text-white">Top 5 Standings</h3>
+            <h3 className="mb-4 text-2xl font-black text-white">Team Standings</h3>
             <div className="space-y-3">
-              {topFive.map((player, index) => (
+              {topFiveTeams.map((team, index) => (
                 <div
-                  key={player.id}
+                  key={team.code}
                   className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
                     index === 0
                       ? 'border-amber-300/50 bg-amber-300/15'
@@ -726,7 +795,32 @@ function FinalScreen({
                     }`}>
                       #{index + 1}
                     </span>
-                    <span className="text-xl font-bold text-white">{player.nickname}</span>
+                    <div className="text-left">
+                      <div className="text-xl font-bold text-white">{team.code}</div>
+                      <div className="text-sm text-zinc-400">
+                        {team.playerCount} players - {team.totalScore.toLocaleString()} total
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg pts</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mx-auto mt-8 max-w-3xl">
+            <h3 className="mb-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Individual top 5
+            </h3>
+            <div className="space-y-3">
+              {topFive.map((player, index) => (
+                <div key={player.id} className="flex items-center justify-between rounded-2xl border border-border bg-secondary/30 px-5 py-4">
+                  <div className="flex items-center gap-4">
+                    <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
+                    <div className="text-left">
+                      <div className="text-xl font-bold text-white">{player.nickname}</div>
+                      <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>
+                    </div>
                   </div>
                   <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
                 </div>

@@ -1,19 +1,31 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { normalizeTeamCode } from '@/lib/gameplay'
 
 async function findExistingPlayer(supabase: ReturnType<typeof createAdminClient>, gameId: string, reconnectToken: string) {
   let result = await supabase
     .from('players')
-    .select('id, nickname')
+    .select('id, nickname, team_code')
     .eq('game_id', gameId)
     .eq('reconnect_token', reconnectToken)
     .maybeSingle()
 
-  const missingReconnectColumn =
-    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+  const errorMessage = result.error?.message ?? ''
+  const missingColumn = result.error?.code === 'PGRST204'
+  const missingReconnectColumn = missingColumn && errorMessage.includes('reconnect_token')
+  const missingTeamColumn = missingColumn && errorMessage.includes('team_code')
 
   if (missingReconnectColumn) {
     return { data: null, error: null, supportsReconnect: false }
+  }
+
+  if (missingTeamColumn) {
+    result = await supabase
+      .from('players')
+      .select('id, nickname')
+      .eq('game_id', gameId)
+      .eq('reconnect_token', reconnectToken)
+      .maybeSingle()
   }
 
   return { ...result, supportsReconnect: true }
@@ -23,6 +35,7 @@ async function insertPlayer(
   supabase: ReturnType<typeof createAdminClient>,
   gameId: string,
   nickname: string,
+  teamCode: string,
   reconnectToken: string
 ) {
   let result = await supabase
@@ -30,13 +43,16 @@ async function insertPlayer(
     .insert({
       game_id: gameId,
       nickname,
+      team_code: teamCode,
       reconnect_token: reconnectToken,
     })
-    .select('id, nickname')
+    .select('id, nickname, team_code')
     .single()
 
-  const missingReconnectColumn =
-    result.error?.code === 'PGRST204' && result.error.message.includes('reconnect_token')
+  const errorMessage = result.error?.message ?? ''
+  const missingColumn = result.error?.code === 'PGRST204'
+  const missingReconnectColumn = missingColumn && errorMessage.includes('reconnect_token')
+  const missingTeamColumn = missingColumn && errorMessage.includes('team_code')
 
   if (missingReconnectColumn) {
     result = await supabase
@@ -44,11 +60,26 @@ async function insertPlayer(
       .insert({
         game_id: gameId,
         nickname,
+        team_code: teamCode,
+      })
+      .select('id, nickname, team_code')
+      .single()
+
+    return { ...result, supportsReconnect: false }
+  }
+
+  if (missingTeamColumn) {
+    result = await supabase
+      .from('players')
+      .insert({
+        game_id: gameId,
+        nickname,
+        reconnect_token: reconnectToken,
       })
       .select('id, nickname')
       .single()
 
-    return { ...result, supportsReconnect: false }
+    return { ...result, supportsReconnect: true }
   }
 
   return { ...result, supportsReconnect: true }
@@ -59,10 +90,11 @@ export async function POST(request: Request) {
     const body = await request.json()
     const pin = String(body.pin || '').trim().toUpperCase()
     const nickname = String(body.nickname || '').trim().slice(0, 20)
+    const teamCode = normalizeTeamCode(String(body.teamCode || ''))
     const reconnectToken = String(body.reconnectToken || '').trim()
 
-    if (!pin || !nickname) {
-      return NextResponse.json({ error: 'PIN and nickname are required.' }, { status: 400 })
+    if (!pin || !nickname || !teamCode) {
+      return NextResponse.json({ error: 'PIN, nickname, and team code are required.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
@@ -84,6 +116,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           playerId: existingPlayer.id,
           nickname: existingPlayer.nickname,
+          teamCode: existingPlayer.team_code ?? null,
           reconnectToken,
           reconnected: true,
         })
@@ -100,6 +133,7 @@ export async function POST(request: Request) {
       supabase,
       game.id,
       nickname,
+      teamCode,
       token
     )
 
@@ -113,6 +147,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       playerId: player.id,
       nickname: player.nickname,
+      teamCode: player.team_code ?? teamCode,
       reconnectToken: supportsReconnect ? token : null,
       reconnected: false,
     })
