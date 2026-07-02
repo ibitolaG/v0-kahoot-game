@@ -206,6 +206,13 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
     const channel = supabase
       .channel(`game-${gameId}`)
+      // Fast path: the host broadcasts state changes directly — these arrive
+      // in well under a second, unlike postgres_changes on the free tier.
+      .on(
+        'broadcast',
+        { event: 'game_update' },
+        (message) => applyGameUpdate(message.payload as Game)
+      )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
@@ -285,7 +292,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       }
     }
 
-    const interval = setInterval(refresh, 3000)
+    // Poll faster on the waiting screen so the first question appears quickly
+    // even if the realtime push is missed.
+    const pollMs = game.status === 'waiting' ? 1500 : 2500
+    const interval = setInterval(refresh, pollMs)
 
     const onWake = () => {
       if (document.visibilityState === 'visible') void refresh()
@@ -302,7 +312,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       document.removeEventListener('visibilitychange', onWake)
       window.removeEventListener('offline', onOffline)
     }
-  }, [game?.id, applyGameUpdate, refreshPlayers, router, supabase])
+  }, [game?.id, game?.status, applyGameUpdate, refreshPlayers, router, supabase])
 
   // Timer countdown
   useEffect(() => {

@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Users, Play, ChevronRight, Trophy, X, FastForward, SkipForward } from 'lucide-react'
@@ -51,6 +52,30 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
     (nextIndex: number) => breakInterval > 0 && nextIndex > 0 && nextIndex < questions.length && nextIndex % breakInterval === 0,
     [questions.length, breakInterval]
   )
+
+  // Broadcast channel on the same topic players listen to. Broadcast messages
+  // arrive in well under a second — much faster than postgres_changes on the
+  // free tier — so game state transitions reach players near-instantly.
+  const broadcastChannelRef = useRef<RealtimeChannel | null>(null)
+
+  useEffect(() => {
+    const channel = supabase.channel(`game-${game.id}`)
+    channel.subscribe()
+    broadcastChannelRef.current = channel
+
+    return () => {
+      broadcastChannelRef.current = null
+      supabase.removeChannel(channel)
+    }
+  }, [game.id, supabase])
+
+  const broadcastGameState = useCallback((update: Partial<Game>) => {
+    void broadcastChannelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_update',
+      payload: update,
+    })
+  }, [])
 
   const fetchPlayers = useCallback(async () => {
     const { data } = await supabase
@@ -164,21 +189,17 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   }, [game.status, game.question_start_time, currentQuestion?.time_limit])
 
   const startGame = async () => {
-    await supabase
-      .from('games')
-      .update({ 
-        status: 'question',
-        current_question_index: 0,
-        question_start_time: new Date().toISOString()
-      })
-      .eq('id', game.id)
-
-    setGame(prev => ({ 
-      ...prev, 
-      status: 'question', 
+    const timestamp = new Date().toISOString()
+    const update = {
+      status: 'question' as const,
       current_question_index: 0,
-      question_start_time: new Date().toISOString()
-    }))
+      question_start_time: timestamp,
+    }
+
+    await supabase.from('games').update(update).eq('id', game.id)
+
+    broadcastGameState(update)
+    setGame(prev => ({ ...prev, ...update }))
     setAnswers([])
     setTimeLeft(currentQuestion?.time_limit || 20)
   }
@@ -189,8 +210,13 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       .update({ status: 'results', question_start_time: null })
       .eq('id', game.id)
 
+    broadcastGameState({
+      status: 'results',
+      current_question_index: game.current_question_index,
+      question_start_time: null,
+    })
     setGame(prev => ({ ...prev, status: 'results', question_start_time: null }))
-  }, [game.id, supabase])
+  }, [game.id, game.current_question_index, broadcastGameState, supabase])
 
   // Shifts the question start time backwards so everyone's countdown drops —
   // players recompute their timers from question_start_time automatically.
@@ -206,30 +232,29 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       .update({ question_start_time: newStart })
       .eq('id', game.id)
 
+    broadcastGameState({
+      status: 'question',
+      current_question_index: game.current_question_index,
+      question_start_time: newStart,
+    })
     setGame(prev => ({ ...prev, question_start_time: newStart }))
-  }, [game.id, game.status, game.question_start_time, supabase])
+  }, [game.id, game.status, game.question_start_time, game.current_question_index, broadcastGameState, supabase])
 
   const startNextQuestion = useCallback(async (questionIndex = game.current_question_index) => {
     const timestamp = new Date().toISOString()
-
-    await supabase
-      .from('games')
-      .update({
-        status: 'question',
-        current_question_index: questionIndex,
-        question_start_time: timestamp
-      })
-      .eq('id', game.id)
-
-    setGame(prev => ({
-      ...prev,
-      status: 'question',
+    const update = {
+      status: 'question' as const,
       current_question_index: questionIndex,
-      question_start_time: timestamp
-    }))
+      question_start_time: timestamp,
+    }
+
+    await supabase.from('games').update(update).eq('id', game.id)
+
+    broadcastGameState(update)
+    setGame(prev => ({ ...prev, ...update }))
     setAnswers([])
     setTimeLeft(questions[questionIndex]?.time_limit || 20)
-  }, [game.id, game.current_question_index, questions, supabase])
+  }, [game.id, game.current_question_index, questions, broadcastGameState, supabase])
 
   const nextQuestion = useCallback(async () => {
     const nextIndex = game.current_question_index + 1
@@ -240,30 +265,26 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
         .from('games')
         .update({ status: 'finished' })
         .eq('id', game.id)
+      broadcastGameState({ status: 'finished', current_question_index: game.current_question_index })
       setGame(prev => ({ ...prev, status: 'finished' }))
     } else if (shouldShowLeaderboardBreak(nextIndex)) {
-      await supabase
-        .from('games')
-        .update({
-          status: 'playing',
-          current_question_index: nextIndex,
-          question_start_time: null
-        })
-        .eq('id', game.id)
-
-      setGame(prev => ({
-        ...prev,
-        status: 'playing',
+      const update = {
+        status: 'playing' as const,
         current_question_index: nextIndex,
-        question_start_time: null
-      }))
+        question_start_time: null,
+      }
+
+      await supabase.from('games').update(update).eq('id', game.id)
+
+      broadcastGameState(update)
+      setGame(prev => ({ ...prev, ...update }))
       setAnswers([])
     } else {
       await startNextQuestion(nextIndex)
     }
 
     await fetchPlayers()
-  }, [fetchPlayers, game.current_question_index, game.id, questions.length, shouldShowLeaderboardBreak, startNextQuestion, supabase])
+  }, [fetchPlayers, game.current_question_index, game.id, questions.length, shouldShowLeaderboardBreak, startNextQuestion, broadcastGameState, supabase])
 
   useEffect(() => {
     if (game.status !== 'results') return
