@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, Users, Play, ChevronRight, Trophy, X, FastForward, SkipForward } from 'lucide-react'
+import { Zap, Users, Play, ChevronRight, Trophy, X, FastForward, SkipForward, CheckCircle } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types'
 import { Brand } from '@/components/brand'
 import { AnswerShape } from '@/components/answer-shape'
@@ -637,17 +637,21 @@ function ResultsScreen({
 }) {
   const options = question.options as QuestionOption[]
   const totalAnswers = answerCounts.reduce((a, b) => a + b, 0)
+  const correctCount = options.reduce(
+    (sum, option, index) => (option.isCorrect ? sum + (answerCounts[index] ?? 0) : sum),
+    0
+  )
 
   const optionColors = [
-    { bg: 'bg-red-500', bar: 'bg-red-500/50' },
-    { bg: 'bg-blue-500', bar: 'bg-blue-500/50' },
-    { bg: 'bg-yellow-500', bar: 'bg-yellow-500/50' },
-    { bg: 'bg-green-500', bar: 'bg-green-500/50' },
+    'bg-red-500',
+    'bg-blue-500',
+    'bg-yellow-500',
+    'bg-green-500',
   ]
 
   return (
     <div className="w-full max-w-4xl animate-slide-up">
-      <Card className="bg-card/50 mb-8">
+      <Card className="bg-card/50 mb-4">
         <CardContent className="py-6">
           <h2 className="text-xl md:text-2xl font-bold text-center text-balance">
             {question.question_text}
@@ -655,28 +659,44 @@ function ResultsScreen({
         </CardContent>
       </Card>
 
+      <p className="mb-6 text-center text-lg text-muted-foreground">
+        <span className="font-bold text-green-600 dark:text-green-400">{correctCount}</span>
+        {' '}of{' '}
+        <span className="font-bold">{totalAnswers}</span>
+        {' '}answered correctly
+      </p>
+
+      {/* Green means correct — and nothing else. Wrong options are dimmed and
+          their vote bars are neutral grey so an option's own color (e.g. the
+          green square) can't be mistaken for the right answer. */}
       <div className="space-y-4 mb-8">
         {options.map((option, index) => {
           const percentage = totalAnswers > 0 ? (answerCounts[index] / totalAnswers) * 100 : 0
+          const isCorrect = option.isCorrect
           return (
-            <div key={index} className="relative">
+            <div
+              key={index}
+              className={`relative overflow-hidden rounded-xl border-2 ${
+                isCorrect
+                  ? 'border-green-500 bg-green-500/10 shadow-[0_0_24px_rgba(34,197,94,0.25)]'
+                  : 'border-border bg-card/40 opacity-60'
+              }`}
+            >
               <div
-                className={`absolute inset-0 rounded-xl ${optionColors[index].bar} transition-[width] duration-700 ease-out`}
+                className={`absolute inset-y-0 left-0 ${isCorrect ? 'bg-green-500/30' : 'bg-muted-foreground/15'} transition-[width] duration-700 ease-out`}
                 style={{ width: `${percentage}%` }}
               />
-              <div className={`relative p-4 rounded-xl border-2 flex items-center justify-between ${
-                option.isCorrect ? 'border-green-500 bg-green-500/10' : 'border-border'
-              }`}>
+              <div className="relative p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg ${optionColors[index].bg} flex items-center justify-center text-white`}>
+                  <div className={`w-8 h-8 rounded-lg ${optionColors[index]} flex items-center justify-center text-white`}>
                     <AnswerShape index={index} className="h-4 w-4" />
                   </div>
-                  <span className="font-medium">{option.text}</span>
-                  {option.isCorrect && (
-                    <span className="text-green-400 text-sm">Correct</span>
-                  )}
+                  <span className={isCorrect ? 'font-bold' : 'font-medium'}>{option.text}</span>
+                  {isCorrect && <CheckCircle className="h-6 w-6 shrink-0 text-green-600 dark:text-green-400" />}
                 </div>
-                <div className="font-bold">{answerCounts[index]}</div>
+                <div className={`text-lg font-bold ${isCorrect ? 'text-green-600 dark:text-green-400' : ''}`}>
+                  {answerCounts[index]}
+                </div>
               </div>
             </div>
           )
