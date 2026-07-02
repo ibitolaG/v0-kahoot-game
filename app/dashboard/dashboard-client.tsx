@@ -12,9 +12,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
-import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle } from 'lucide-react'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle, User as UserIcon, Users } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
-import type { Quiz, Profile } from '@/lib/types'
+import type { Quiz, Profile, GameMode } from '@/lib/types'
 import { Brand } from '@/components/brand'
 
 interface DashboardClientProps {
@@ -26,6 +33,7 @@ interface DashboardClientProps {
 export function DashboardClient({ user, quizzes, profile }: DashboardClientProps) {
   const [loading, setLoading] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [modePickerQuizId, setModePickerQuizId] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -44,22 +52,38 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
     setLoading(null)
   }
 
-  const handleStartGame = async (quizId: string) => {
+  const handleStartGame = async (quizId: string, mode: GameMode) => {
+    setModePickerQuizId(null)
     setLoading(quizId)
     setErrorMessage(null)
 
     const pin = Math.random().toString(36).substring(2, 8).toUpperCase()
 
-    const { data: game, error } = await supabase
+    let { data: game, error } = await supabase
       .from('games')
       .insert({
         quiz_id: quizId,
         host_id: user.id,
         pin,
         status: 'waiting',
+        mode,
       })
       .select()
       .single()
+
+    // Fall back for databases that have not run 009_add_game_mode.sql yet
+    if (error?.code === 'PGRST204' && error.message.includes('mode')) {
+      ;({ data: game, error } = await supabase
+        .from('games')
+        .insert({
+          quiz_id: quizId,
+          host_id: user.id,
+          pin,
+          status: 'waiting',
+        })
+        .select()
+        .single())
+    }
 
     if (error || !game) {
       console.error('Error creating game:', error)
@@ -169,7 +193,7 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
                   )}
                   <Button
                     className="w-full"
-                    onClick={() => handleStartGame(quiz.id)}
+                    onClick={() => setModePickerQuizId(quiz.id)}
                     disabled={loading === quiz.id || (quiz.questions[0]?.count || 0) === 0}
                   >
                     <Play className="mr-2 h-4 w-4" />
@@ -181,6 +205,45 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
           </div>
         )}
       </main>
+
+      <Dialog open={modePickerQuizId !== null} onOpenChange={(open) => !open && setModePickerQuizId(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Choose game mode</DialogTitle>
+            <DialogDescription>How should players compete in this game?</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <button
+              onClick={() => modePickerQuizId && handleStartGame(modePickerQuizId, 'classic')}
+              className="flex items-center gap-4 rounded-xl border-2 border-border bg-secondary/30 p-4 text-left transition-colors hover:border-primary hover:bg-primary/10"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <UserIcon className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <div className="font-bold">Classic</div>
+                <div className="text-sm text-muted-foreground">
+                  Everyone plays for themselves. Individual leaderboard only.
+                </div>
+              </div>
+            </button>
+            <button
+              onClick={() => modePickerQuizId && handleStartGame(modePickerQuizId, 'team')}
+              className="flex items-center gap-4 rounded-xl border-2 border-border bg-secondary/30 p-4 text-left transition-colors hover:border-primary hover:bg-primary/10"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Users className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <div className="font-bold">Team Mode</div>
+                <div className="text-sm text-muted-foreground">
+                  Players join with a team code. Team and individual leaderboards.
+                </div>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

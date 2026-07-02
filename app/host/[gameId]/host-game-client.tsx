@@ -8,7 +8,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Zap, Users, Play, ChevronRight, Trophy, X } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types'
 import { Brand } from '@/components/brand'
-import { getPlayerTeamCode, getTeamStandings, type TeamStanding } from '@/lib/gameplay'
+import { AnswerShape } from '@/components/answer-shape'
+import { getPlayerTeamCode, getTeamStandings, isTeamMode, type TeamStanding } from '@/lib/gameplay'
 
 interface HostGameClientProps {
   initialGame: Game & { 
@@ -30,6 +31,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
 
   const questions = game.quiz.questions
   const currentQuestion = questions[game.current_question_index]
+  const teamMode = isTeamMode(game)
   const teamStandings = useMemo(() => getTeamStandings(players), [players])
   const breakInterval = Math.max(0, game.quiz.break_interval ?? 4)
   const currentPlayerIds = useMemo(() => new Set(players.map((player) => player.id)), [players])
@@ -125,6 +127,19 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       }
     }
   }, [game.id, supabase, currentQuestion?.id, fetchPlayers, fetchAnswers, currentPlayerIds])
+
+  // Polling fallback — keeps player list and answer counts fresh even if the
+  // realtime connection drops.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const activePlayers = await fetchPlayers()
+      if (game.status === 'question' && currentQuestion?.id) {
+        await fetchAnswers(currentQuestion.id, activePlayers.map((player) => player.id))
+      }
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [game.status, currentQuestion?.id, fetchPlayers, fetchAnswers])
 
   // Timer countdown
   useEffect(() => {
@@ -280,7 +295,11 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Users className="h-5 w-5" />
-              <span>{players.length} players - {teamStandings.length} teams</span>
+              <span>
+                {teamMode
+                  ? `${players.length} players - ${teamStandings.length} teams`
+                  : `${players.length} players`}
+              </span>
             </div>
             <Button variant="ghost" size="icon" onClick={endGame}>
               <X className="h-5 w-5" />
@@ -292,10 +311,11 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
       {/* Main Content */}
       <main className="flex-1 flex items-center justify-center p-4">
         {game.status === 'waiting' && (
-          <WaitingScreen 
-            pin={game.pin} 
-            players={players} 
+          <WaitingScreen
+            pin={game.pin}
+            players={players}
             teams={teamStandings}
+            teamMode={teamMode}
             onStart={startGame}
             canStart={players.length > 0}
           />
@@ -326,6 +346,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
         {game.status === 'playing' && (
           <LeaderboardBreakScreen
             players={players}
+            teamMode={teamMode}
             currentQuestionNumber={game.current_question_index}
             totalQuestions={questions.length}
             onContinue={() => startNextQuestion()}
@@ -333,41 +354,53 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
         )}
 
         {game.status === 'finished' && (
-          <FinalScreen players={players} onEnd={endGame} />
+          <FinalScreen players={players} teamMode={teamMode} onEnd={endGame} />
         )}
       </main>
     </div>
   )
 }
 
-function WaitingScreen({ 
-  pin, 
-  players, 
+function WaitingScreen({
+  pin,
+  players,
   teams,
+  teamMode,
   onStart,
-  canStart 
-}: { 
+  canStart
+}: {
   pin: string
   players: Player[]
   teams: TeamStanding[]
+  teamMode: boolean
   onStart: () => void
   canStart: boolean
 }) {
+  // Show the real deployment address instead of a hardcoded domain
+  const [siteHost, setSiteHost] = useState('')
+  useEffect(() => {
+    setSiteHost(window.location.host)
+  }, [])
+
   return (
-    <div className="w-full max-w-2xl text-center">
+    <div className="w-full max-w-2xl text-center animate-slide-up">
       <Card className="bg-card/50 backdrop-blur animate-pulse-glow mb-8">
         <CardContent className="py-12">
-          <p className="text-muted-foreground mb-2">Join at quizblitz.app</p>
+          <p className="text-muted-foreground mb-2">{siteHost ? `Join at ${siteHost}` : 'Join with the game PIN'}</p>
           <h2 className="text-6xl md:text-8xl font-mono font-bold tracking-widest text-primary mb-4">
             {pin}
           </h2>
-          <p className="text-muted-foreground">Enter this PIN and your team code to join</p>
+          <p className="text-muted-foreground">
+            {teamMode ? 'Enter this PIN and your team code to join' : 'Enter this PIN to join'}
+          </p>
         </CardContent>
       </Card>
 
       <div className="mb-8">
-        <h3 className="text-xl font-semibold mb-4">Teams ({teams.length}) - Players ({players.length})</h3>
-        {teams.length > 0 ? (
+        <h3 className="text-xl font-semibold mb-4">
+          {teamMode ? `Teams (${teams.length}) - Players (${players.length})` : `Players (${players.length})`}
+        </h3>
+        {teamMode && teams.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {teams.map((team) => (
               <div key={team.code} className="rounded-xl border border-border bg-secondary/30 px-4 py-3 text-left">
@@ -377,7 +410,7 @@ function WaitingScreen({
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {team.players.map((player) => (
-                    <span key={player.id} className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium">
+                    <span key={player.id} className="rounded-full bg-background/60 px-3 py-1 text-xs font-medium animate-pop-in">
                       {player.nickname}
                     </span>
                   ))}
@@ -390,7 +423,7 @@ function WaitingScreen({
             {players.map((player) => (
               <div
                 key={player.id}
-                className="px-4 py-2 bg-secondary rounded-full text-sm font-medium"
+                className="px-4 py-2 bg-secondary rounded-full text-sm font-medium animate-pop-in"
               >
                 {player.nickname}
               </div>
@@ -441,16 +474,21 @@ function QuestionScreen({
   }, [timeLeft, onTimeUp])
 
   const optionColors = [
-    'bg-red-500/20 border-red-500/50',
-    'bg-blue-500/20 border-blue-500/50',
-    'bg-yellow-500/20 border-yellow-500/50',
-    'bg-green-500/20 border-green-500/50',
+    'bg-red-500/20 border-red-500/50 text-red-400',
+    'bg-blue-500/20 border-blue-500/50 text-blue-400',
+    'bg-yellow-500/20 border-yellow-500/50 text-yellow-400',
+    'bg-green-500/20 border-green-500/50 text-green-400',
   ]
 
+  const timePercent = timeLeft !== null && question.time_limit > 0
+    ? Math.min(100, (timeLeft / question.time_limit) * 100)
+    : 100
+  const answeredPercent = totalPlayers > 0 ? (answeredCount / totalPlayers) * 100 : 0
+
   return (
-    <div className="w-full max-w-4xl">
+    <div className="w-full max-w-4xl animate-slide-up" key={question.id}>
       {/* Timer and Progress */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-3">
         <div className="text-muted-foreground">
           Question {questionNumber} of {totalQuestions}
         </div>
@@ -460,6 +498,16 @@ function QuestionScreen({
         <div className="text-muted-foreground">
           {answeredCount}/{totalPlayers} answered
         </div>
+      </div>
+
+      {/* Time remaining bar */}
+      <div className="mb-6 h-2 w-full overflow-hidden rounded-full bg-secondary">
+        <div
+          className={`h-full rounded-full transition-[width] duration-300 ease-linear ${
+            timeLeft !== null && timeLeft <= 5 ? 'bg-primary' : 'bg-primary/60'
+          }`}
+          style={{ width: `${timePercent}%` }}
+        />
       </div>
 
       {/* Question */}
@@ -472,18 +520,28 @@ function QuestionScreen({
       </Card>
 
       {/* Options */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4 mb-6">
         {options.map((option, index) => (
           <div
             key={index}
-            className={`p-6 rounded-xl border-2 ${optionColors[index]} flex items-center gap-4`}
+            className={`p-6 rounded-xl border-2 ${optionColors[index]} flex items-center gap-4 animate-pop-in stagger-${index + 1}`}
           >
-            <div className="w-10 h-10 rounded-lg bg-background/50 flex items-center justify-center font-bold">
-              {String.fromCharCode(65 + index)}
+            <div className="w-10 h-10 shrink-0 rounded-lg bg-background/50 flex items-center justify-center">
+              <AnswerShape index={index} className="h-5 w-5" />
             </div>
-            <span className="text-lg font-medium">{option.text}</span>
+            <span className="text-lg font-medium text-foreground">{option.text}</span>
           </div>
         ))}
+      </div>
+
+      {/* Answered progress */}
+      <div className="mx-auto max-w-md">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
+          <div
+            className="h-full rounded-full bg-green-500 transition-[width] duration-500"
+            style={{ width: `${answeredPercent}%` }}
+          />
+        </div>
       </div>
     </div>
   )
@@ -513,7 +571,7 @@ function ResultsScreen({
   ]
 
   return (
-    <div className="w-full max-w-4xl">
+    <div className="w-full max-w-4xl animate-slide-up">
       <Card className="bg-card/50 mb-8">
         <CardContent className="py-6">
           <h2 className="text-xl md:text-2xl font-bold text-center text-balance">
@@ -528,15 +586,15 @@ function ResultsScreen({
           return (
             <div key={index} className="relative">
               <div
-                className={`absolute inset-0 rounded-xl ${optionColors[index].bar}`}
+                className={`absolute inset-0 rounded-xl ${optionColors[index].bar} transition-[width] duration-700 ease-out`}
                 style={{ width: `${percentage}%` }}
               />
               <div className={`relative p-4 rounded-xl border-2 flex items-center justify-between ${
                 option.isCorrect ? 'border-green-500 bg-green-500/10' : 'border-border'
               }`}>
                 <div className="flex items-center gap-3">
-                  <div className={`w-8 h-8 rounded-lg ${optionColors[index].bg} flex items-center justify-center font-bold text-white`}>
-                    {String.fromCharCode(65 + index)}
+                  <div className={`w-8 h-8 rounded-lg ${optionColors[index].bg} flex items-center justify-center text-white`}>
+                    <AnswerShape index={index} className="h-4 w-4" />
                   </div>
                   <span className="font-medium">{option.text}</span>
                   {option.isCorrect && (
@@ -572,11 +630,13 @@ function ResultsScreen({
 
 function LeaderboardBreakScreen({
   players,
+  teamMode,
   currentQuestionNumber,
   totalQuestions,
   onContinue,
 }: {
   players: Player[]
+  teamMode: boolean
   currentQuestionNumber: number
   totalQuestions: number
   onContinue: () => void
@@ -584,8 +644,18 @@ function LeaderboardBreakScreen({
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const topFive = sortedPlayers.slice(0, 5)
   const teamStandings = getTeamStandings(players)
-  const topThreeTeams = teamStandings.slice(0, 3)
   const topFiveTeams = teamStandings.slice(0, 5)
+  const podiumEntries = teamMode
+    ? teamStandings.slice(0, 3).map((team) => ({
+        id: team.code,
+        name: team.code,
+        detail: `${team.averageScore.toLocaleString()} avg pts`,
+      }))
+    : sortedPlayers.slice(0, 3).map((player) => ({
+        id: player.id,
+        name: player.nickname,
+        detail: `${player.score.toLocaleString()} pts`,
+      }))
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
   const podiumOrder = [1, 0, 2]
   const podiumHeightsByRank = ['h-56', 'h-40', 'h-32']
@@ -596,7 +666,7 @@ function LeaderboardBreakScreen({
   ]
 
   return (
-    <div className="w-full max-w-5xl">
+    <div className="w-full max-w-5xl animate-slide-up">
       <div className="text-center mb-8">
         <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
           <Trophy className="h-12 w-12 text-amber-300" />
@@ -611,19 +681,19 @@ function LeaderboardBreakScreen({
         <CardContent className="py-8">
           <div className="mb-10 flex items-end justify-center gap-4">
             {podiumOrder.map((position) => {
-              const team = topThreeTeams[position]
-              if (!team) return null
+              const entry = podiumEntries[position]
+              if (!entry) return null
 
               return (
-                <div key={team.code} className="flex w-40 flex-col items-center text-center">
+                <div key={entry.id} className="flex w-40 flex-col items-center text-center">
                   <div className="mb-3">
                     <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-2xl font-bold text-white">{team.code}</div>
-                    <div className="text-base text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
+                    <div className="mt-1 text-2xl font-bold text-white">{entry.name}</div>
+                    <div className="text-base text-zinc-300">{entry.detail}</div>
                   </div>
-                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl`}>
+                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl animate-podium-rise stagger-${position + 1}`}>
                     <span className="text-5xl font-black">{position + 1}</span>
                   </div>
                 </div>
@@ -631,6 +701,7 @@ function LeaderboardBreakScreen({
             })}
           </div>
 
+          {teamMode && (
           <div className="mx-auto mb-8 max-w-3xl space-y-3">
             {topFiveTeams.map((team, index) => (
               <div
@@ -664,10 +735,11 @@ function LeaderboardBreakScreen({
               </div>
             ))}
           </div>
+          )}
 
           <div className="mx-auto max-w-3xl space-y-3">
             <h3 className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Individual top 5
+              {teamMode ? 'Individual top 5' : 'Top 5 players'}
             </h3>
             {topFive.map((player, index) => (
               <div
@@ -692,7 +764,7 @@ function LeaderboardBreakScreen({
                   </span>
                   <div>
                     <div className="text-xl font-bold text-white">{player.nickname}</div>
-                    <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>
+                    {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>}
                   </div>
                 </div>
                 <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
@@ -713,18 +785,30 @@ function LeaderboardBreakScreen({
   )
 }
 
-function FinalScreen({ 
-  players, 
-  onEnd 
-}: { 
+function FinalScreen({
+  players,
+  teamMode,
+  onEnd
+}: {
   players: Player[]
-  onEnd: () => void 
+  teamMode: boolean
+  onEnd: () => void
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
   const topFive = sortedPlayers.slice(0, 5)
   const teamStandings = getTeamStandings(players)
-  const topThreeTeams = teamStandings.slice(0, 3)
   const topFiveTeams = teamStandings.slice(0, 5)
+  const podiumEntries = teamMode
+    ? teamStandings.slice(0, 3).map((team) => ({
+        id: team.code,
+        name: team.code,
+        detail: `${team.averageScore.toLocaleString()} avg pts`,
+      }))
+    : sortedPlayers.slice(0, 3).map((player) => ({
+        id: player.id,
+        name: player.nickname,
+        detail: `${player.score.toLocaleString()} pts`,
+      }))
   const podiumOrder = [1, 0, 2]
   const podiumHeightsByRank = ['h-72', 'h-52', 'h-40']
   const podiumStylesByRank = [
@@ -734,7 +818,7 @@ function FinalScreen({
   ]
 
   return (
-    <div className="w-full max-w-5xl text-center">
+    <div className="w-full max-w-5xl text-center animate-slide-up">
       <div className="mb-8">
         <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
           <Trophy className="h-14 w-14 text-amber-300" />
@@ -746,24 +830,26 @@ function FinalScreen({
         <CardContent className="py-10">
           <div className="mb-6">
             <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
-              Winning Team: {topThreeTeams[0]?.code ?? 'TBD'}
+              {teamMode
+                ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
+                : `Winner: ${sortedPlayers[0]?.nickname ?? 'TBD'}`}
             </span>
           </div>
 
           <div className="mb-12 flex justify-center items-end gap-5">
             {podiumOrder.map((position) => {
-              const team = topThreeTeams[position]
-              if (!team) return null
+              const entry = podiumEntries[position]
+              if (!entry) return null
               return (
-                <div key={team.code} className="flex w-40 flex-col items-center">
+                <div key={entry.id} className="flex w-40 flex-col items-center">
                   <div className="mb-4">
                     <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-3xl font-black text-white">{team.code}</div>
-                    <div className="text-lg text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
+                    <div className="mt-1 text-3xl font-black text-white">{entry.name}</div>
+                    <div className="text-lg text-zinc-300">{entry.detail}</div>
                   </div>
-                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStylesByRank[position]} pb-5 shadow-2xl`}>
+                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStylesByRank[position]} pb-5 shadow-2xl animate-podium-rise stagger-${position + 1}`}>
                     <span className="text-6xl font-black">{position + 1}</span>
                   </div>
                 </div>
@@ -771,6 +857,7 @@ function FinalScreen({
             })}
           </div>
 
+          {teamMode && (
           <div className="mx-auto max-w-3xl">
             <h3 className="mb-4 text-2xl font-black text-white">Team Standings</h3>
             <div className="space-y-3">
@@ -807,10 +894,11 @@ function FinalScreen({
               ))}
             </div>
           </div>
+          )}
 
           <div className="mx-auto mt-8 max-w-3xl">
             <h3 className="mb-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              Individual top 5
+              {teamMode ? 'Individual top 5' : 'Top 5 players'}
             </h3>
             <div className="space-y-3">
               {topFive.map((player, index) => (
@@ -819,7 +907,7 @@ function FinalScreen({
                     <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                     <div className="text-left">
                       <div className="text-xl font-bold text-white">{player.nickname}</div>
-                      <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>
+                      {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>}
                     </div>
                   </div>
                   <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>

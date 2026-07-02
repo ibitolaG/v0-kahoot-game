@@ -1,4 +1,9 @@
-import type { Player, QuestionOption } from '@/lib/types'
+import type { Game, Player, QuestionOption } from '@/lib/types'
+
+// Games created before the mode column existed behave like team games.
+export function isTeamMode(game: Pick<Game, 'mode'> | null | undefined) {
+  return (game?.mode ?? 'team') !== 'classic'
+}
 
 export function calculatePoints(
   options: QuestionOption[],

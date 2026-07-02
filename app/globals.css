@@ -138,6 +138,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Subtle arena glow so screens feel less flat */
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, oklch(0.55 0.25 25 / 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 110%, oklch(0.55 0.25 25 / 0.08), transparent);
+    background-attachment: fixed;
   }
 }
 
@@ -152,10 +157,55 @@
   50% { transform: scale(1.05); }
 }
 
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop-in {
+  0% { opacity: 0; transform: scale(0.8); }
+  70% { transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes podium-rise {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
 .animate-timer-pulse {
   animation: timer-pulse 1s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out both;
+}
+
+.animate-pop-in {
+  animation: pop-in 0.35s ease-out both;
+}
+
+.animate-podium-rise {
+  transform-origin: bottom;
+  animation: podium-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Stagger children — pair with animate-slide-up/pop-in via inline delay */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-glow,
+  .animate-timer-pulse,
+  .animate-slide-up,
+  .animate-pop-in,
+  .animate-podium-rise {
+    animation: none;
+  }
 }

@@ -18,6 +18,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [gameExists, setGameExists] = useState(false)
+  const [isTeamGame, setIsTeamGame] = useState(true)
   const router = useRouter()
   const storageKey = `quizblitz:${normalizedPin}:reconnect-token`
   const nicknameStorageKey = `quizblitz:${normalizedPin}:nickname`
@@ -37,6 +38,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
       if (response.ok) {
         setError(null)
         setGameExists(true)
+        setIsTeamGame(data?.mode !== 'classic')
         if (data?.rejoinAvailable) {
           const savedNickname = data.nickname || localStorage.getItem(nicknameStorageKey)
           const savedTeamCode = data.teamCode || localStorage.getItem(teamStorageKey)
@@ -70,7 +72,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
       return
     }
 
-    if (!effectiveTeamCode) {
+    if (isTeamGame && !effectiveTeamCode) {
       setError('Please enter your team code')
       return
     }
@@ -121,7 +123,7 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
         <Brand />
       </Link>
 
-      <Card className="w-full max-w-md bg-card/50 backdrop-blur border-border/50">
+      <Card className="w-full max-w-md bg-card/50 backdrop-blur border-border/50 animate-slide-up">
         <CardContent className="p-6">
           <div className="text-center mb-6">
             <div className="text-sm text-muted-foreground mb-1">Joining game</div>
@@ -142,31 +144,51 @@ export default function JoinGamePage({ params }: { params: Promise<{ pin: string
             </div>
           ) : (
             <form onSubmit={handleJoin} className="space-y-4">
-              <Input
-                type="text"
-                placeholder="Enter your nickname"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value)}
-                className="text-center text-xl h-14 bg-secondary"
-                maxLength={20}
-                autoFocus
-              />
+              <div className="space-y-1.5">
+                <label htmlFor="nickname" className="block text-sm font-medium text-muted-foreground">
+                  Nickname
+                </label>
+                <Input
+                  id="nickname"
+                  type="text"
+                  placeholder="Enter your nickname"
+                  value={nickname}
+                  onChange={(e) => setNickname(e.target.value)}
+                  className="text-center text-xl h-14 bg-secondary focus-visible:ring-primary/60"
+                  maxLength={20}
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
 
-              <Input
-                type="text"
-                placeholder="Team code e.g. YOUTH"
-                value={teamCode}
-                onChange={(e) => setTeamCode(e.target.value.toUpperCase().replace(/\s+/g, '-'))}
-                className="text-center text-xl h-14 bg-secondary font-mono tracking-wider"
-                maxLength={20}
-                autoCapitalize="characters"
-              />
-
-              {error && (
-                <p className="text-destructive text-sm text-center">{error}</p>
+              {isTeamGame && (
+                <div className="space-y-1.5">
+                  <label htmlFor="team-code" className="block text-sm font-medium text-muted-foreground">
+                    Team code
+                  </label>
+                  <Input
+                    id="team-code"
+                    type="text"
+                    placeholder="e.g. YOUTH"
+                    value={teamCode}
+                    onChange={(e) => setTeamCode(e.target.value.toUpperCase().replace(/\s+/g, '-'))}
+                    className="text-center text-xl h-14 bg-secondary font-mono tracking-wider focus-visible:ring-primary/60"
+                    maxLength={20}
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                  />
+                </div>
               )}
 
-              <Button type="submit" className="w-full h-12 text-lg" disabled={joining}>
+              {error && (
+                <p className="text-destructive text-sm text-center" role="alert">{error}</p>
+              )}
+
+              <Button
+                type="submit"
+                className="w-full h-12 text-lg transition-transform active:scale-[0.98]"
+                disabled={joining}
+              >
                 {joining ? 'Joining...' : 'Join Game'}
               </Button>
             </form>

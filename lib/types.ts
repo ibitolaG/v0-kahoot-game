@@ -34,12 +34,15 @@ export interface Question {
 
 export type GameStatus = 'waiting' | 'playing' | 'question' | 'results' | 'finished'
 
+export type GameMode = 'classic' | 'team'
+
 export interface Game {
   id: string
   quiz_id: string
   host_id: string
   pin: string
   status: GameStatus
+  mode?: GameMode
   current_question_index: number
   question_start_time: string | null
   created_at: string

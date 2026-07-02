@@ -4,10 +4,25 @@ import { useState, useEffect, use, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle } from 'lucide-react'
+import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle, WifiOff } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption } from '@/lib/types'
 import { Brand } from '@/components/brand'
-import { getPlayerTeamCode, getTeamStandings } from '@/lib/gameplay'
+import { AnswerShape } from '@/components/answer-shape'
+import { getPlayerTeamCode, getTeamStandings, isTeamMode } from '@/lib/gameplay'
+
+// Retries transient network failures so a dropped connection doesn't lose the answer.
+async function fetchWithRetry(input: RequestInfo, init: RequestInit, attempts = 3): Promise<Response> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetch(input, init)
+    } catch (error) {
+      lastError = error
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+    }
+  }
+  throw lastError
+}
 
 export default function PlayerGamePage({ params }: { params: Promise<{ pin: string }> }) {
   const { pin } = use(params)
@@ -24,15 +39,19 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   const [timeLeft, setTimeLeft] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [answerError, setAnswerError] = useState<string | null>(null)
   const [players, setPlayers] = useState<Player[]>([])
+  const [connectionLost, setConnectionLost] = useState(false)
 
   const router = useRouter()
   const supabase = useRef(createClient()).current
+  const cacheKey = `quizblitz:${pin.toUpperCase()}:${playerId}:game-cache`
 
   // Derive currentQuestion from game state — no stale closure possible
   const currentQuestion: Question | null = game
     ? (questions[game.current_question_index] ?? null)
     : null
+  const teamMode = isTeamMode(game)
   const teamStandings = useMemo(() => getTeamStandings(players), [players])
 
   // Initial data fetch
@@ -42,58 +61,139 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       return
     }
 
+    // Render instantly from the local cache while the network catches up, so
+    // questions still show on a bad connection or after a reload.
+    const loadCache = () => {
+      try {
+        const cached = localStorage.getItem(cacheKey)
+        if (!cached) return false
+        const parsed = JSON.parse(cached) as { game: Game; player: Player; questions: Question[]; players: Player[] }
+        if (!parsed.game || !parsed.player || !parsed.questions?.length) return false
+        if (parsed.game.status === 'question') {
+          lastQuestionKeyRef.current = `${parsed.game.current_question_index}:${parsed.game.question_start_time ?? ''}`
+        }
+        setGame(parsed.game)
+        setPlayer(parsed.player)
+        setQuestions(parsed.questions)
+        setPlayers(parsed.players ?? [])
+        setLoading(false)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    const hadCache = loadCache()
+
     const fetchData = async () => {
-      const { data: gameData, error: gameError } = await supabase
-        .from('games')
-        .select('*')
-        .eq('pin', pin.toUpperCase())
-        .single()
+      try {
+        const { data: gameData, error: gameError } = await supabase
+          .from('games')
+          .select('*')
+          .eq('pin', pin.toUpperCase())
+          .single()
 
-      if (gameError || !gameData) {
-        setError(`Game not found (${gameError?.message ?? 'no data'})`)
+        if (gameError || !gameData) {
+          if (!hadCache) {
+            setError(`Game not found (${gameError?.message ?? 'no data'})`)
+            setLoading(false)
+          }
+          return
+        }
+
+        const { data: playerData, error: playerError } = await supabase
+          .from('players')
+          .select('*')
+          .eq('id', playerId)
+          .single()
+
+        if (playerError || !playerData) {
+          if (!hadCache) router.push(`/play/${pin}`)
+          return
+        }
+
+        // Fetch questions directly — avoids nested join RLS issues
+        const { data: questionsData, error: questionsError } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('quiz_id', gameData.quiz_id)
+          .order('order_index')
+
+        if (questionsError) {
+          if (!hadCache) {
+            setError(`Could not load questions (${questionsError.message})`)
+            setLoading(false)
+          }
+          return
+        }
+
+        const { data: playersData } = await supabase
+          .from('players')
+          .select('*')
+          .eq('game_id', gameData.id)
+          .order('score', { ascending: false })
+
+        if (gameData.status === 'question') {
+          lastQuestionKeyRef.current = `${gameData.current_question_index}:${gameData.question_start_time ?? ''}`
+        }
+        setGame(gameData)
+        setPlayer(playerData)
+        setQuestions(questionsData ?? [])
+        setPlayers(playersData ?? [])
         setLoading(false)
-        return
+
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({
+            game: gameData,
+            player: playerData,
+            questions: questionsData ?? [],
+            players: playersData ?? [],
+          }))
+        } catch {
+          // Cache is best-effort; ignore storage failures
+        }
+      } catch {
+        if (!hadCache) {
+          setError('Could not reach the server. Check your connection and refresh.')
+          setLoading(false)
+        }
       }
-
-      const { data: playerData, error: playerError } = await supabase
-        .from('players')
-        .select('*')
-        .eq('id', playerId)
-        .single()
-
-      if (playerError || !playerData) {
-        router.push(`/play/${pin}`)
-        return
-      }
-
-      // Fetch questions directly — avoids nested join RLS issues
-      const { data: questionsData, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .eq('quiz_id', gameData.quiz_id)
-        .order('order_index')
-
-      if (questionsError) {
-        setError(`Could not load questions (${questionsError.message})`)
-        setLoading(false)
-        return
-      }
-
-      const { data: playersData } = await supabase
-        .from('players')
-        .select('*')
-        .eq('game_id', gameData.id)
-        .order('score', { ascending: false })
-
-      setGame(gameData)
-      setPlayer(playerData)
-      setQuestions(questionsData ?? [])
-      setPlayers(playersData ?? [])
-      setLoading(false)
     }
 
     fetchData()
   }, [playerId, pin]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset answer state exactly once per new question, whether the update
+  // arrived via realtime or the polling fallback.
+  const lastQuestionKeyRef = useRef<string | null>(null)
+
+  const applyGameUpdate = useCallback((updatedGame: Game) => {
+    if (updatedGame.status === 'question') {
+      const questionKey = `${updatedGame.current_question_index}:${updatedGame.question_start_time ?? ''}`
+      if (lastQuestionKeyRef.current !== questionKey) {
+        lastQuestionKeyRef.current = questionKey
+        setSelectedOption(null)
+        setHasAnswered(false)
+        setLastAnswer(null)
+        setSubmittingAnswer(false)
+        setAnswerError(null)
+      }
+    }
+    setGame(prev => prev ? { ...prev, ...updatedGame } : updatedGame)
+  }, [])
+
+  const refreshPlayers = useCallback(async (gameId: string) => {
+    const { data } = await supabase
+      .from('players')
+      .select('*')
+      .eq('game_id', gameId)
+      .order('score', { ascending: false })
+    if (data) {
+      setPlayers(data)
+      const updatedPlayer = data.find(p => p.id === playerId)
+      if (updatedPlayer) setPlayer(updatedPlayer)
+    }
+  }, [playerId, supabase])
 
   // Subscribe to game updates
   useEffect(() => {
@@ -106,41 +206,27 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
-        (payload) => {
-          const updatedGame = payload.new as Game
-          setGame(prev => prev ? { ...prev, ...updatedGame } : null)
-          if (updatedGame.status === 'question') {
-            setSelectedOption(null)
-            setHasAnswered(false)
-            setLastAnswer(null)
-            setSubmittingAnswer(false)
-          }
-        }
+        (payload) => applyGameUpdate(payload.new as Game)
       )
       .on(
         'postgres_changes',
         { event: 'DELETE', schema: 'public', table: 'games', filter: `id=eq.${gameId}` },
         () => router.push('/')
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setConnectionLost(false)
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setConnectionLost(true)
+        }
+      })
 
     const playersChannel = supabase
       .channel(`players-${gameId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'players', filter: `game_id=eq.${gameId}` },
-        async () => {
-          const { data } = await supabase
-            .from('players')
-            .select('*')
-            .eq('game_id', gameId)
-            .order('score', { ascending: false })
-          if (data) {
-            setPlayers(data)
-            const updatedPlayer = data.find(p => p.id === playerId)
-            if (updatedPlayer) setPlayer(updatedPlayer)
-          }
-        }
+        () => refreshPlayers(gameId)
       )
       .subscribe()
 
@@ -149,6 +235,71 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       supabase.removeChannel(playersChannel)
     }
   }, [game?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Polling fallback — keeps the game moving even when realtime is down or
+  // the network is flaky. Cheap single-row read every few seconds.
+  useEffect(() => {
+    if (!game?.id) return
+
+    const gameId = game.id
+    let tick = 0
+    let cancelled = false
+
+    const refresh = async () => {
+      try {
+        const { data, error: pollError } = await supabase
+          .from('games')
+          .select('*')
+          .eq('id', gameId)
+          .maybeSingle()
+
+        if (cancelled) return
+
+        if (pollError) {
+          // Network hiccup or paused database — keep the current question on
+          // screen and try again on the next tick.
+          setConnectionLost(true)
+          return
+        }
+
+        if (!data) {
+          // Game row is gone — host ended the game
+          router.push('/')
+          return
+        }
+
+        setConnectionLost(false)
+        applyGameUpdate(data as Game)
+
+        // Refresh scores occasionally and whenever standings are on screen
+        tick++
+        const status = (data as Game).status
+        if (status === 'playing' || status === 'results' || status === 'finished' || tick % 3 === 0) {
+          await refreshPlayers(gameId)
+        }
+      } catch {
+        if (!cancelled) setConnectionLost(true)
+      }
+    }
+
+    const interval = setInterval(refresh, 3000)
+
+    const onWake = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    window.addEventListener('online', onWake)
+    document.addEventListener('visibilitychange', onWake)
+    const onOffline = () => setConnectionLost(true)
+    window.addEventListener('offline', onOffline)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      window.removeEventListener('online', onWake)
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('offline', onOffline)
+    }
+  }, [game?.id, applyGameUpdate, refreshPlayers, router, supabase])
 
   // Timer countdown
   useEffect(() => {
@@ -171,19 +322,29 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
     setSelectedOption(optionIndex)
     setHasAnswered(true)
     setSubmittingAnswer(true)
-    setError(null)
+    setAnswerError(null)
 
     const options = currentQuestion.options as QuestionOption[]
     const fallbackCorrect = options[optionIndex]?.isCorrect || false
 
-    const response = await fetch('/api/play/answer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        playerId: player.id,
-        selectedOption: optionIndex,
-      }),
-    })
+    let response: Response
+    try {
+      response = await fetchWithRetry('/api/play/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: player.id,
+          selectedOption: optionIndex,
+        }),
+      })
+    } catch {
+      setHasAnswered(false)
+      setSelectedOption(null)
+      setLastAnswer(null)
+      setSubmittingAnswer(false)
+      setAnswerError('Connection lost — your answer did not go through. Tap an answer to try again.')
+      return
+    }
 
     const data = await response.json().catch(() => null)
 
@@ -192,7 +353,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
       setSelectedOption(null)
       setLastAnswer(null)
       setSubmittingAnswer(false)
-      setError(data?.error || 'Failed to submit answer.')
+      setAnswerError(data?.error || 'Failed to submit answer.')
       return
     }
 
@@ -230,6 +391,17 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   if (!game || !player) return null
   const playerTeamCode = getPlayerTeamCode(player)
   const playerTeamRank = teamStandings.findIndex((team) => team.code === playerTeamCode) + 1
+  const podiumEntries = teamMode
+    ? teamStandings.slice(0, 3).map((team) => ({
+        id: team.code,
+        name: team.code,
+        detail: `${team.averageScore.toLocaleString()} avg pts`,
+      }))
+    : players.slice(0, 3).map((p) => ({
+        id: p.id,
+        name: p.nickname,
+        detail: `${p.score.toLocaleString()} pts`,
+      }))
 
   const optionColors = [
     'bg-red-500 hover:bg-red-600 active:bg-red-700',
@@ -246,7 +418,9 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
             <Brand showText={false} logoClassName="h-6 w-auto" />
             <div>
               <div className="font-bold leading-tight">{player.nickname}</div>
-              <div className="font-mono text-xs text-muted-foreground">{playerTeamCode}</div>
+              {teamMode && (
+                <div className="font-mono text-xs text-muted-foreground">{playerTeamCode}</div>
+              )}
             </div>
           </div>
           <div className="text-primary font-bold">
@@ -255,10 +429,17 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         </div>
       </header>
 
+      {connectionLost && (
+        <div className="flex items-center justify-center gap-2 bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 text-sm text-amber-500">
+          <WifiOff className="h-4 w-4" />
+          <span>Weak connection — reconnecting. Keep playing, your answers will still count.</span>
+        </div>
+      )}
+
       <div className="flex-1 flex items-center justify-center p-4">
         {game.status === 'waiting' && (
-          <div className="text-center">
-            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
+          <div className="text-center animate-pop-in">
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6 animate-pulse-glow">
               <Zap className="h-10 w-10 text-primary" />
             </div>
             <h2 className="text-2xl font-bold mb-2">You&apos;re in!</h2>
@@ -267,7 +448,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'question' && currentQuestion && !hasAnswered && (
-          <div className="w-full max-w-lg">
+          <div className="w-full max-w-lg animate-slide-up" key={currentQuestion.id}>
             <div className="text-center mb-4">
               <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary ${
                 timeLeft !== null && timeLeft <= 5 ? 'text-primary animate-timer-pulse' : ''
@@ -281,14 +462,21 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               <p className="text-lg font-semibold">{currentQuestion.question_text}</p>
             </div>
 
+            {answerError && (
+              <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">
+                {answerError}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               {(currentQuestion.options as QuestionOption[]).map((option, index) => (
                 <button
                   key={index}
                   onClick={() => submitAnswer(index)}
-                  className={`${optionColors[index]} p-6 rounded-xl text-white font-bold text-lg transition-all active:scale-95 flex items-center justify-center min-h-[100px]`}
+                  className={`${optionColors[index]} animate-pop-in stagger-${index + 1} p-5 rounded-xl text-white font-bold text-lg transition-transform active:scale-95 flex flex-col items-center justify-center gap-2 min-h-[100px] shadow-lg`}
                 >
-                  <span className="text-center">{option.text || String.fromCharCode(65 + index)}</span>
+                  <AnswerShape index={index} className="h-6 w-6 opacity-90" />
+                  <span className="text-center leading-tight">{option.text || String.fromCharCode(65 + index)}</span>
                 </button>
               ))}
             </div>
@@ -303,7 +491,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'question' && hasAnswered && lastAnswer && (
-          <div className="text-center">
+          <div className="text-center animate-pop-in">
             {lastAnswer.correct ? (
               <>
                 <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-4" />
@@ -329,7 +517,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'results' && (
-          <div className="w-full max-w-lg">
+          <div className="w-full max-w-lg animate-slide-up">
             <div className="text-center mb-6">
               {lastAnswer ? (
                 lastAnswer.correct ? (
@@ -374,7 +562,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         key={index}
                         className={`rounded-xl border-2 p-5 ${cardClass}`}
                       >
-                        <div className="mb-2 text-sm font-bold">{String.fromCharCode(65 + index)}</div>
+                        <div className="mb-2 flex items-center gap-2 text-sm font-bold">
+                          <AnswerShape index={index} className="h-4 w-4" />
+                          {String.fromCharCode(65 + index)}
+                        </div>
                         <div className="font-semibold">{option.text}</div>
                       </div>
                     )
@@ -395,15 +586,18 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'playing' && (
-          <div className="w-full max-w-4xl text-center">
+          <div className="w-full max-w-4xl text-center animate-slide-up">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
               <Trophy className="h-12 w-12 text-amber-300" />
             </div>
             <h2 className="text-4xl font-black mb-2">Leaderboard Break</h2>
-            <p className="text-muted-foreground mb-6">Team standings first, individual standings just below.</p>
+            <p className="text-muted-foreground mb-6">
+              {teamMode ? 'Team standings first, individual standings just below.' : 'Top players so far.'}
+            </p>
 
             <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_60px_rgba(239,0,0,0.14)]">
               <CardContent className="py-6">
+                {teamMode && (
                 <div className="mb-6 space-y-3">
                   {teamStandings.slice(0, 5).map((team, index) => (
                     <div
@@ -439,10 +633,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     </div>
                   ))}
                 </div>
+                )}
 
                 <div className="space-y-3">
                   <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Individual top 5
+                    {teamMode ? 'Individual top 5' : 'Top 5 players'}
                   </div>
                   {players.slice(0, 5).map((p, index) => (
                     <div
@@ -455,7 +650,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                         <div className="text-left">
                           <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
-                          <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>
+                          {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>}
                         </div>
                       </div>
                       <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
@@ -468,7 +663,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         )}
 
         {game.status === 'finished' && (
-          <div className="w-full max-w-5xl text-center">
+          <div className="w-full max-w-5xl text-center animate-slide-up">
             <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
               <Trophy className="h-14 w-14 text-amber-300" />
             </div>
@@ -483,9 +678,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                 <div className="text-lg text-muted-foreground mt-2">
                   Position: #{players.findIndex(p => p.id === player.id) + 1} of {players.length}
                 </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Team {playerTeamCode}: #{playerTeamRank || '-'} of {teamStandings.length}
-                </div>
+                {teamMode && (
+                  <div className="text-sm text-muted-foreground mt-1">
+                    Team {playerTeamCode}: #{playerTeamRank || '-'} of {teamStandings.length}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -493,14 +690,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               <CardContent className="py-8">
                 <div className="mb-5">
                   <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
-                    Winning Team: {teamStandings[0]?.code ?? 'TBD'}
+                    {teamMode
+                      ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
+                      : `Winner: ${players[0]?.nickname ?? 'TBD'}`}
                   </span>
                 </div>
 
                 <div className="mb-10 flex justify-center items-end gap-5">
                   {[1, 0, 2].map((position) => {
-                    const team = teamStandings[position]
-                    if (!team) return null
+                    const entry = podiumEntries[position]
+                    if (!entry) return null
                     const heightsByRank = ['h-60', 'h-44', 'h-36']
                     const stylesByRank = [
                       'from-amber-300 via-yellow-400 to-orange-500 text-slate-950',
@@ -509,15 +708,15 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     ]
 
                     return (
-                      <div key={team.code} className="flex w-36 flex-col items-center text-center">
+                      <div key={entry.id} className="flex w-36 flex-col items-center text-center">
                         <div className="mb-3">
                           <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
                             {position === 0 ? 'WINNER' : `#${position + 1}`}
                           </div>
-                          <div className="mt-1 text-2xl font-bold text-white">{team.code}</div>
-                          <div className="text-base text-zinc-300">{team.averageScore.toLocaleString()} avg pts</div>
+                          <div className="mt-1 text-2xl font-bold text-white">{entry.name}</div>
+                          <div className="text-base text-zinc-300">{entry.detail}</div>
                         </div>
-                        <div className={`flex w-full ${heightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${stylesByRank[position]} pb-4 shadow-xl`}>
+                        <div className={`flex w-full ${heightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${stylesByRank[position]} pb-4 shadow-xl animate-podium-rise stagger-${position + 1}`}>
                           <span className="text-5xl font-black">{position + 1}</span>
                         </div>
                       </div>
@@ -525,6 +724,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                   })}
                 </div>
 
+                {teamMode && (
                 <div className="mx-auto mb-6 max-w-3xl space-y-3">
                   <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     Team standings
@@ -561,10 +761,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     </div>
                   ))}
                 </div>
+                )}
 
                 <div className="mx-auto max-w-3xl space-y-3">
                   <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Individual top 5
+                    {teamMode ? 'Individual top 5' : 'Top 5 players'}
                   </div>
                   {players.slice(0, 5).map((p, index) => (
                     <div
@@ -577,7 +778,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                         <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                         <div className="text-left">
                           <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
-                          <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>
+                          {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>}
                         </div>
                       </div>
                       <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>

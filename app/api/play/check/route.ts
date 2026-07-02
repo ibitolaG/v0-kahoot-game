@@ -40,15 +40,26 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient()
-  const { data: game, error } = await supabase
+  let { data: game, error } = await supabase
     .from('games')
-    .select('id, status')
+    .select('id, status, mode')
     .eq('pin', pin)
     .maybeSingle()
+
+  // Fall back for databases that have not run 009_add_game_mode.sql yet
+  if (error && error.message.includes('mode')) {
+    ;({ data: game, error } = await supabase
+      .from('games')
+      .select('id, status')
+      .eq('pin', pin)
+      .maybeSingle())
+  }
 
   if (error || !game) {
     return NextResponse.json({ gameExists: false, error: 'Game not found.' }, { status: 404 })
   }
+
+  const mode = ('mode' in game && game.mode === 'classic') ? 'classic' : 'team'
 
   if (reconnectToken) {
     const { data: existingPlayer } = await findExistingPlayer(supabase, game.id, reconnectToken)
@@ -57,6 +68,7 @@ export async function GET(request: Request) {
       return NextResponse.json({
         gameExists: true,
         rejoinAvailable: true,
+        mode,
         nickname: existingPlayer.nickname,
         teamCode: existingPlayer.team_code ?? null,
       })
@@ -70,5 +82,6 @@ export async function GET(request: Request) {
   return NextResponse.json({
     gameExists: true,
     rejoinAvailable: false,
+    mode,
   })
 }

@@ -90,24 +90,42 @@ export async function POST(request: Request) {
     const body = await request.json()
     const pin = String(body.pin || '').trim().toUpperCase()
     const nickname = String(body.nickname || '').trim().slice(0, 20)
-    const teamCode = normalizeTeamCode(String(body.teamCode || ''))
+    const requestedTeamCode = normalizeTeamCode(String(body.teamCode || ''))
     const reconnectToken = String(body.reconnectToken || '').trim()
 
-    if (!pin || !nickname || !teamCode) {
-      return NextResponse.json({ error: 'PIN, nickname, and team code are required.' }, { status: 400 })
+    if (!pin || !nickname) {
+      return NextResponse.json({ error: 'PIN and nickname are required.' }, { status: 400 })
     }
 
     const supabase = createAdminClient()
 
-    const { data: game, error: gameError } = await supabase
+    let { data: game, error: gameError } = await supabase
       .from('games')
-      .select('id, status')
+      .select('id, status, mode')
       .eq('pin', pin)
       .single()
+
+    // Fall back for databases that have not run 009_add_game_mode.sql yet
+    if (gameError && gameError.message.includes('mode')) {
+      ;({ data: game, error: gameError } = await supabase
+        .from('games')
+        .select('id, status')
+        .eq('pin', pin)
+        .single())
+    }
 
     if (gameError || !game) {
       return NextResponse.json({ error: 'Game not found.' }, { status: 404 })
     }
+
+    const teamGame = !('mode' in game) || game.mode !== 'classic'
+
+    if (teamGame && !requestedTeamCode) {
+      return NextResponse.json({ error: 'PIN, nickname, and team code are required.' }, { status: 400 })
+    }
+
+    // Classic games ignore team codes; players fall into the default bucket.
+    const teamCode = teamGame ? requestedTeamCode : 'GENERAL'
 
     if (reconnectToken) {
       const { data: existingPlayer } = await findExistingPlayer(supabase, game.id, reconnectToken)

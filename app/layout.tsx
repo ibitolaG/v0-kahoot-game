@@ -7,9 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'QuizBlitz - Real-time Multiplayer Quiz Game',
+  title: 'CCI Leeds Quiz Arena - Real-time Multiplayer Quiz Game',
   description: 'Create and host interactive quiz games with live scoreboard and real-time multiplayer gameplay. Challenge your friends!',
-  generator: 'v0.app',
   icons: {
     icon: [
       {
