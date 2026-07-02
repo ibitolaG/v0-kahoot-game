@@ -530,7 +530,6 @@ function QuestionScreen({
   const timePercent = timeLeft !== null && question.time_limit > 0
     ? Math.min(100, (timeLeft / question.time_limit) * 100)
     : 100
-  const answeredPercent = totalPlayers > 0 ? (answeredCount / totalPlayers) * 100 : 0
 
   return (
     <div className="w-full max-w-4xl animate-slide-up" key={question.id}>
@@ -592,18 +591,8 @@ function QuestionScreen({
         ))}
       </div>
 
-      {/* Answered progress */}
-      <div className="mx-auto max-w-md">
-        <div className="h-2 w-full overflow-hidden rounded-full bg-secondary">
-          <div
-            className="h-full rounded-full bg-green-500 transition-[width] duration-500"
-            style={{ width: `${answeredPercent}%` }}
-          />
-        </div>
-      </div>
-
       {/* Host timer controls */}
-      <div className="mt-6 flex items-center justify-center gap-3">
+      <div className="mt-2 flex items-center justify-center gap-3">
         <Button
           variant="outline"
           size="sm"
