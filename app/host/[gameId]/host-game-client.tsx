@@ -519,11 +519,12 @@ function QuestionScreen({
     }
   }, [timeLeft, onTimeUp])
 
+  // Solid Kahoot-style colors — vivid on the projector in both themes
   const optionColors = [
-    'bg-red-500/20 border-red-500/50 text-red-400',
-    'bg-blue-500/20 border-blue-500/50 text-blue-400',
-    'bg-yellow-500/20 border-yellow-500/50 text-yellow-400',
-    'bg-green-500/20 border-green-500/50 text-green-400',
+    'bg-red-500 border-red-600',
+    'bg-blue-500 border-blue-600',
+    'bg-yellow-500 border-yellow-600',
+    'bg-green-500 border-green-600',
   ]
 
   const timePercent = timeLeft !== null && question.time_limit > 0
@@ -557,7 +558,7 @@ function QuestionScreen({
       </div>
 
       {/* Question */}
-      <Card className="bg-card/50 mb-8">
+      <Card className="bg-card/50 mb-6">
         <CardContent className="py-8">
           <h2 className="text-2xl md:text-3xl font-bold text-center text-balance">
             {question.question_text}
@@ -565,17 +566,28 @@ function QuestionScreen({
         </CardContent>
       </Card>
 
+      {question.image_url && (
+        <div className="mb-6 flex justify-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={question.image_url}
+            alt="Question illustration"
+            className="max-h-72 rounded-xl border border-border object-contain shadow-lg animate-pop-in"
+          />
+        </div>
+      )}
+
       {/* Options */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         {options.map((option, index) => (
           <div
             key={index}
-            className={`p-6 rounded-xl border-2 ${optionColors[index]} flex items-center gap-4 animate-pop-in stagger-${index + 1}`}
+            className={`p-6 rounded-xl border-2 ${optionColors[index]} flex items-center gap-4 animate-pop-in stagger-${index + 1} text-white shadow-lg`}
           >
-            <div className="w-10 h-10 shrink-0 rounded-lg bg-background/50 flex items-center justify-center">
+            <div className="w-10 h-10 shrink-0 rounded-lg bg-white/20 flex items-center justify-center">
               <AnswerShape index={index} className="h-5 w-5" />
             </div>
-            <span className="text-lg font-medium text-foreground">{option.text}</span>
+            <span className="text-lg font-bold">{option.text}</span>
           </div>
         ))}
       </div>
@@ -708,25 +720,11 @@ function LeaderboardBreakScreen({
   const topFive = sortedPlayers.slice(0, 5)
   const teamStandings = getTeamStandings(players)
   const topFiveTeams = teamStandings.slice(0, 5)
-  const podiumEntries = teamMode
-    ? teamStandings.slice(0, 3).map((team) => ({
-        id: team.code,
-        name: team.code,
-        detail: `${team.averageScore.toLocaleString()} avg pts`,
-      }))
-    : sortedPlayers.slice(0, 3).map((player) => ({
-        id: player.id,
-        name: player.nickname,
-        detail: `${player.score.toLocaleString()} pts`,
-      }))
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
-  const podiumOrder = [1, 0, 2]
-  const podiumHeightsByRank = ['h-56', 'h-40', 'h-32']
-  const podiumStylesByRank = [
-    'from-amber-300 to-yellow-500 text-slate-950',
-    'from-slate-200 to-slate-500 text-slate-950',
-    'from-orange-300 to-amber-700 text-slate-950',
-  ]
+  // Reveal rows bottom-up so the leader lands last, Kahoot-style
+  const revealDelay = (index: number, total: number) => ({
+    animationDelay: `${(total - 1 - index) * 0.35 + 0.2}s`,
+  })
 
   return (
     <div className="w-full max-w-5xl animate-slide-up">
@@ -742,34 +740,16 @@ function LeaderboardBreakScreen({
 
       <Card className="mb-8 border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_80px_rgba(239,0,0,0.14)]">
         <CardContent className="py-8">
-          <div className="mb-10 flex items-end justify-center gap-4">
-            {podiumOrder.map((position) => {
-              const entry = podiumEntries[position]
-              if (!entry) return null
-
-              return (
-                <div key={entry.id} className="flex w-40 flex-col items-center text-center">
-                  <div className="mb-3">
-                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-600 dark:text-amber-300' : 'text-foreground'}`}>
-                      {position === 0 ? 'WINNER' : `#${position + 1}`}
-                    </div>
-                    <div className="mt-1 text-2xl font-bold text-foreground">{entry.name}</div>
-                    <div className="text-base text-muted-foreground">{entry.detail}</div>
-                  </div>
-                  <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl animate-podium-rise stagger-${position + 1}`}>
-                    <span className="text-5xl font-black">{position + 1}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-
           {teamMode && (
           <div className="mx-auto mb-8 max-w-3xl space-y-3">
+            <h3 className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+              Team standings
+            </h3>
             {topFiveTeams.map((team, index) => (
               <div
                 key={team.code}
-                className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                style={revealDelay(index, topFiveTeams.length)}
+                className={`animate-leaderboard-in flex items-center justify-between rounded-2xl border px-5 py-4 ${
                   index === 0
                     ? 'border-amber-300/50 bg-amber-300/15'
                     : index === 1
@@ -807,7 +787,8 @@ function LeaderboardBreakScreen({
             {topFive.map((player, index) => (
               <div
                 key={player.id}
-                className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                style={revealDelay(index, topFive.length)}
+                className={`animate-leaderboard-in flex items-center justify-between rounded-2xl border px-5 py-4 ${
                   index === 0
                     ? 'border-amber-300/50 bg-amber-300/15'
                     : index === 1

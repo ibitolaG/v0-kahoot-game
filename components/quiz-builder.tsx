@@ -17,7 +17,7 @@ import {
   SelectValue
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { Zap, ArrowLeft, Plus, Trash2, Save, GripVertical, Upload, Download } from 'lucide-react'
+import { Zap, ArrowLeft, Plus, Trash2, Save, GripVertical, Upload, Download, ImagePlus, Loader2, X } from 'lucide-react'
 import type { Quiz, Question, QuestionOption } from '@/lib/types'
 
 interface QuizBuilderProps {
@@ -30,6 +30,7 @@ interface QuestionForm {
   question_text: string
   question_type: 'multiple_choice' | 'true_false'
   options: QuestionOption[]
+  image_url?: string | null
   time_limit: number
   points: number
 }
@@ -43,6 +44,7 @@ const DEFAULT_QUESTION: QuestionForm = {
     { text: '', isCorrect: false },
     { text: '', isCorrect: false },
   ],
+  image_url: null,
   time_limit: 20,
   points: 1000,
 }
@@ -62,6 +64,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
       question_text: q.question_text,
       question_type: q.question_type,
       options: q.options as QuestionOption[],
+      image_url: q.image_url ?? null,
       time_limit: q.time_limit,
       points: q.points,
     })) || [{ ...DEFAULT_QUESTION }]
@@ -69,6 +72,9 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const imageTargetIndexRef = useRef<number | null>(null)
+  const [uploadingImageIndex, setUploadingImageIndex] = useState<number | null>(null)
 
   const router = useRouter()
   const supabase = createClient()
@@ -130,6 +136,53 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
     setQuestions(newQuestions)
   }
 
+  const pickImageFor = (index: number) => {
+    imageTargetIndexRef.current = index
+    imageInputRef.current?.click()
+  }
+
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    const index = imageTargetIndexRef.current
+    imageTargetIndexRef.current = null
+
+    if (!file || index === null) return
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file (PNG, JPG, GIF or WebP).')
+      return
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError('Image is too large — keep it under 4MB.')
+      return
+    }
+
+    setUploadingImageIndex(index)
+    setError(null)
+
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+      const path = `${userId}/${crypto.randomUUID()}.${ext}`
+      const { error: uploadError } = await supabase.storage
+        .from('question-images')
+        .upload(path, file, { cacheControl: '3600' })
+
+      if (uploadError) throw uploadError
+
+      const { data } = supabase.storage.from('question-images').getPublicUrl(path)
+      // Functional update — the questions array may have changed during the upload
+      setQuestions(prev => prev.map((q, i) => (i === index ? { ...q, image_url: data.publicUrl } : q)))
+    } catch (err) {
+      setError(
+        `Image upload failed. ${getErrorMessage(err)} ` +
+        '(Has scripts/010_add_question_images.sql been run in Supabase?)'
+      )
+    }
+
+    setUploadingImageIndex(null)
+  }
+
   const handleJsonImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -166,6 +219,7 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
             question_text: qObj.question_text,
             question_type: type,
             options,
+            image_url: typeof qObj.image_url === 'string' ? qObj.image_url : null,
             time_limit: typeof qObj.time_limit === 'number' ? qObj.time_limit : 20,
             points: typeof qObj.points === 'number' ? qObj.points : 1000,
           }
@@ -309,17 +363,25 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
         quiz_id: quizId,
         question_text: q.question_text,
         question_type: q.question_type,
-        options: q.question_type === 'true_false' 
-          ? q.options 
+        options: q.question_type === 'true_false'
+          ? q.options
           : q.options.filter(o => o.text.trim()),
+        image_url: q.image_url ?? null,
         time_limit: q.time_limit,
         points: q.points,
         order_index: index,
       }))
 
-      const { error: questionsError } = await supabase
+      let { error: questionsError } = await supabase
         .from('questions')
         .insert(questionsToInsert)
+
+      // Fall back for databases that have not run 010_add_question_images.sql yet
+      if (questionsError?.code === 'PGRST204' && questionsError.message.includes('image_url')) {
+        ;({ error: questionsError } = await supabase
+          .from('questions')
+          .insert(questionsToInsert.map(({ image_url: _imageUrl, ...rest }) => rest)))
+      }
 
       if (questionsError) throw questionsError
 
@@ -436,6 +498,13 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
                 className="hidden"
                 onChange={handleJsonImport}
               />
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleImageSelect}
+              />
               <Button variant="outline" onClick={addQuestion}>
                 <Plus className="mr-2 h-4 w-4" />
                 Add Question
@@ -487,6 +556,49 @@ export function QuizBuilder({ userId, existingQuiz }: QuizBuilderProps) {
                     className="bg-secondary resize-none"
                     rows={2}
                   />
+                </Field>
+
+                <Field>
+                  <FieldLabel>Image (optional)</FieldLabel>
+                  {question.image_url ? (
+                    <div className="relative inline-block">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={question.image_url}
+                        alt={`Question ${qIndex + 1} image`}
+                        className="max-h-40 rounded-lg border border-border object-contain"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -right-2 -top-2 h-7 w-7 rounded-full"
+                        onClick={() => updateQuestion(qIndex, { image_url: null })}
+                        aria-label="Remove image"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      onClick={() => pickImageFor(qIndex)}
+                      disabled={uploadingImageIndex !== null}
+                    >
+                      {uploadingImageIndex === qIndex ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <ImagePlus className="mr-2 h-4 w-4" />
+                          Add Image
+                        </>
+                      )}
+                    </Button>
+                  )}
                 </Field>
 
                 <div>

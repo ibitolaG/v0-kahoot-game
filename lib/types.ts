@@ -26,6 +26,7 @@ export interface Question {
   question_text: string
   question_type: 'multiple_choice' | 'true_false'
   options: QuestionOption[]
+  image_url?: string | null
   time_limit: number
   points: number
   order_index: number

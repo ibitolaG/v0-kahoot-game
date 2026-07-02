@@ -173,6 +173,13 @@
   to { transform: scaleY(1); }
 }
 
+/* Kahoot-style leaderboard reveal — rows slide in one by one */
+@keyframes leaderboard-in {
+  from { opacity: 0; transform: translateX(-48px) scale(0.96); }
+  60% { transform: translateX(6px) scale(1.01); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
@@ -194,6 +201,10 @@
   animation: podium-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+.animate-leaderboard-in {
+  animation: leaderboard-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 /* Stagger children — pair with animate-slide-up/pop-in via inline delay */
 .stagger-1 { animation-delay: 0.05s; }
 .stagger-2 { animation-delay: 0.1s; }
@@ -205,7 +216,8 @@
   .animate-timer-pulse,
   .animate-slide-up,
   .animate-pop-in,
-  .animate-podium-rise {
+  .animate-podium-rise,
+  .animate-leaderboard-in {
     animation: none;
   }
 }

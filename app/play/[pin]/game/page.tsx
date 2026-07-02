@@ -476,6 +476,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
             <div className="bg-card/50 border border-border rounded-xl px-5 py-4 mb-5 text-center">
               <p className="text-lg font-semibold">{currentQuestion.question_text}</p>
+              {currentQuestion.image_url && (
+                <div className="mt-3 flex justify-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={currentQuestion.image_url}
+                    alt="Question illustration"
+                    className="max-h-44 rounded-lg border border-border object-contain"
+                  />
+                </div>
+              )}
             </div>
 
             {answerError && (
@@ -607,10 +617,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               <CardContent className="py-6">
                 {teamMode && (
                 <div className="mb-6 space-y-3">
-                  {teamStandings.slice(0, 5).map((team, index) => (
+                  {teamStandings.slice(0, 5).map((team, index, list) => (
                     <div
                       key={team.code}
-                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                      style={{ animationDelay: `${(list.length - 1 - index) * 0.35 + 0.2}s` }}
+                      className={`animate-leaderboard-in flex items-center justify-between rounded-2xl border px-5 py-4 ${
                         index === 0
                           ? 'border-amber-300/50 bg-amber-300/15'
                           : index === 1
@@ -647,10 +658,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                   <div className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                     {teamMode ? 'Individual top 5' : 'Top 5 players'}
                   </div>
-                  {players.slice(0, 5).map((p, index) => (
+                  {players.slice(0, 5).map((p, index, list) => (
                     <div
                       key={p.id}
-                      className={`flex items-center justify-between rounded-2xl border px-5 py-4 ${
+                      style={{ animationDelay: `${(list.length - 1 - index) * 0.35 + 0.2}s` }}
+                      className={`animate-leaderboard-in flex items-center justify-between rounded-2xl border px-5 py-4 ${
                         p.id === player.id ? 'border-primary/40 bg-primary/10' : 'border-border bg-secondary/30'
                       }`}
                     >
