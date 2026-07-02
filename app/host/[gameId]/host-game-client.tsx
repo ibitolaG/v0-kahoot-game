@@ -881,14 +881,6 @@ function FinalScreen({
 
       <Card className="mb-8 border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_100px_rgba(239,0,0,0.16)]">
         <CardContent className="py-10">
-          <div className="mb-6">
-            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
-              {teamMode
-                ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
-                : `Winner: ${sortedPlayers[0]?.nickname ?? 'TBD'}`}
-            </span>
-          </div>
-
           <div className="mb-12 flex justify-center items-end gap-5">
             {podiumOrder.map((position) => {
               const entry = podiumEntries[position]

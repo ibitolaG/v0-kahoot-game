@@ -708,14 +708,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
             <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_90px_rgba(239,0,0,0.16)]">
               <CardContent className="py-8">
-                <div className="mb-5">
-                  <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
-                    {teamMode
-                      ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
-                      : `Winner: ${players[0]?.nickname ?? 'TBD'}`}
-                  </span>
-                </div>
-
                 <div className="mb-10 flex justify-center items-end gap-5">
                   {[1, 0, 2].map((position) => {
                     const entry = podiumEntries[position]
