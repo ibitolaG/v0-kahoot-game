@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, Users, Play, ChevronRight, Trophy, X } from 'lucide-react'
+import { Zap, Users, Play, ChevronRight, Trophy, X, FastForward, SkipForward } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types'
 import { Brand } from '@/components/brand'
 import { AnswerShape } from '@/components/answer-shape'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { getPlayerTeamCode, getTeamStandings, isTeamMode, type TeamStanding } from '@/lib/gameplay'
 
 interface HostGameClientProps {
@@ -191,6 +192,23 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
     setGame(prev => ({ ...prev, status: 'results', question_start_time: null }))
   }, [game.id, supabase])
 
+  // Shifts the question start time backwards so everyone's countdown drops —
+  // players recompute their timers from question_start_time automatically.
+  const shortenTimer = useCallback(async (seconds: number) => {
+    if (game.status !== 'question' || !game.question_start_time) return
+
+    const newStart = new Date(
+      new Date(game.question_start_time).getTime() - seconds * 1000
+    ).toISOString()
+
+    await supabase
+      .from('games')
+      .update({ question_start_time: newStart })
+      .eq('id', game.id)
+
+    setGame(prev => ({ ...prev, question_start_time: newStart }))
+  }, [game.id, game.status, game.question_start_time, supabase])
+
   const startNextQuestion = useCallback(async (questionIndex = game.current_question_index) => {
     const timestamp = new Date().toISOString()
 
@@ -301,6 +319,7 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
                   : `${players.length} players`}
               </span>
             </div>
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={endGame}>
               <X className="h-5 w-5" />
             </Button>
@@ -330,6 +349,8 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
             answeredCount={currentGameAnswers.length}
             totalPlayers={players.length}
             onTimeUp={showResults}
+            onShortenTimer={() => shortenTimer(10)}
+            onEndQuestion={showResults}
           />
         )}
 
@@ -456,6 +477,8 @@ function QuestionScreen({
   answeredCount,
   totalPlayers,
   onTimeUp,
+  onShortenTimer,
+  onEndQuestion,
 }: {
   question: Question
   questionNumber: number
@@ -464,6 +487,8 @@ function QuestionScreen({
   answeredCount: number
   totalPlayers: number
   onTimeUp: () => void
+  onShortenTimer: () => void
+  onEndQuestion: () => void
 }) {
   const options = question.options as QuestionOption[]
 
@@ -542,6 +567,23 @@ function QuestionScreen({
             style={{ width: `${answeredPercent}%` }}
           />
         </div>
+      </div>
+
+      {/* Host timer controls */}
+      <div className="mt-6 flex items-center justify-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onShortenTimer}
+          disabled={timeLeft === null || timeLeft <= 0}
+        >
+          <FastForward className="mr-2 h-4 w-4" />
+          -10s
+        </Button>
+        <Button variant="outline" size="sm" onClick={onEndQuestion}>
+          <SkipForward className="mr-2 h-4 w-4" />
+          End question now
+        </Button>
       </div>
     </div>
   )
@@ -669,7 +711,7 @@ function LeaderboardBreakScreen({
     <div className="w-full max-w-5xl animate-slide-up">
       <div className="text-center mb-8">
         <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
-          <Trophy className="h-12 w-12 text-amber-300" />
+          <Trophy className="h-12 w-12 text-amber-600 dark:text-amber-300" />
         </div>
         <h2 className="text-5xl font-black mb-2">Leaderboard Break</h2>
         <p className="text-lg text-muted-foreground">
@@ -687,11 +729,11 @@ function LeaderboardBreakScreen({
               return (
                 <div key={entry.id} className="flex w-40 flex-col items-center text-center">
                   <div className="mb-3">
-                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-600 dark:text-amber-300' : 'text-foreground'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-2xl font-bold text-white">{entry.name}</div>
-                    <div className="text-base text-zinc-300">{entry.detail}</div>
+                    <div className="mt-1 text-2xl font-bold text-foreground">{entry.name}</div>
+                    <div className="text-base text-muted-foreground">{entry.detail}</div>
                   </div>
                   <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${podiumStylesByRank[position]} pb-4 shadow-xl animate-podium-rise stagger-${position + 1}`}>
                     <span className="text-5xl font-black">{position + 1}</span>
@@ -718,20 +760,20 @@ function LeaderboardBreakScreen({
               >
                 <div className="flex items-center gap-4">
                   <span className={`w-12 text-2xl font-black ${
-                    index === 0 ? 'text-amber-300' :
-                    index === 1 ? 'text-slate-200' :
-                    index === 2 ? 'text-orange-300' : 'text-primary'
+                    index === 0 ? 'text-amber-600 dark:text-amber-300' :
+                    index === 1 ? 'text-slate-500 dark:text-slate-200' :
+                    index === 2 ? 'text-orange-600 dark:text-orange-300' : 'text-primary'
                   }`}>
                     #{index + 1}
                   </span>
                   <div>
-                    <div className="text-xl font-bold text-white">{team.code}</div>
-                    <div className="text-sm text-zinc-400">
+                    <div className="text-xl font-bold text-foreground">{team.code}</div>
+                    <div className="text-sm text-muted-foreground">
                       {team.playerCount} players - {team.totalScore.toLocaleString()} total
                     </div>
                   </div>
                 </div>
-                <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg pts</span>
+                <span className="text-xl font-bold text-foreground">{team.averageScore.toLocaleString()} avg pts</span>
               </div>
             ))}
           </div>
@@ -756,18 +798,18 @@ function LeaderboardBreakScreen({
               >
                 <div className="flex items-center gap-4">
                   <span className={`w-12 text-2xl font-black ${
-                    index === 0 ? 'text-amber-300' :
-                    index === 1 ? 'text-slate-200' :
-                    index === 2 ? 'text-orange-300' : 'text-primary'
+                    index === 0 ? 'text-amber-600 dark:text-amber-300' :
+                    index === 1 ? 'text-slate-500 dark:text-slate-200' :
+                    index === 2 ? 'text-orange-600 dark:text-orange-300' : 'text-primary'
                   }`}>
                     #{index + 1}
                   </span>
                   <div>
-                    <div className="text-xl font-bold text-white">{player.nickname}</div>
-                    {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>}
+                    <div className="text-xl font-bold text-foreground">{player.nickname}</div>
+                    {teamMode && <div className="text-sm text-muted-foreground">{getPlayerTeamCode(player)}</div>}
                   </div>
                 </div>
-                <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
+                <span className="text-xl font-bold text-foreground">{player.score.toLocaleString()} pts</span>
               </div>
             ))}
           </div>
@@ -821,7 +863,7 @@ function FinalScreen({
     <div className="w-full max-w-5xl text-center animate-slide-up">
       <div className="mb-8">
         <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
-          <Trophy className="h-14 w-14 text-amber-300" />
+          <Trophy className="h-14 w-14 text-amber-600 dark:text-amber-300" />
         </div>
         <h2 className="text-6xl font-black">Final Results</h2>
       </div>
@@ -829,7 +871,7 @@ function FinalScreen({
       <Card className="mb-8 border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_100px_rgba(239,0,0,0.16)]">
         <CardContent className="py-10">
           <div className="mb-6">
-            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
+            <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
               {teamMode
                 ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
                 : `Winner: ${sortedPlayers[0]?.nickname ?? 'TBD'}`}
@@ -843,11 +885,11 @@ function FinalScreen({
               return (
                 <div key={entry.id} className="flex w-40 flex-col items-center">
                   <div className="mb-4">
-                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                    <div className={`text-3xl font-black ${position === 0 ? 'text-amber-600 dark:text-amber-300' : 'text-foreground'}`}>
                       {position === 0 ? 'WINNER' : `#${position + 1}`}
                     </div>
-                    <div className="mt-1 text-3xl font-black text-white">{entry.name}</div>
-                    <div className="text-lg text-zinc-300">{entry.detail}</div>
+                    <div className="mt-1 text-3xl font-black text-foreground">{entry.name}</div>
+                    <div className="text-lg text-muted-foreground">{entry.detail}</div>
                   </div>
                   <div className={`flex w-full ${podiumHeightsByRank[position]} items-end justify-center rounded-t-[2rem] bg-gradient-to-b ${podiumStylesByRank[position]} pb-5 shadow-2xl animate-podium-rise stagger-${position + 1}`}>
                     <span className="text-6xl font-black">{position + 1}</span>
@@ -859,7 +901,7 @@ function FinalScreen({
 
           {teamMode && (
           <div className="mx-auto max-w-3xl">
-            <h3 className="mb-4 text-2xl font-black text-white">Team Standings</h3>
+            <h3 className="mb-4 text-2xl font-black text-foreground">Team Standings</h3>
             <div className="space-y-3">
               {topFiveTeams.map((team, index) => (
                 <div
@@ -876,20 +918,20 @@ function FinalScreen({
                 >
                   <div className="flex items-center gap-4">
                     <span className={`w-12 text-2xl font-black ${
-                      index === 0 ? 'text-amber-300' :
-                      index === 1 ? 'text-slate-200' :
-                      index === 2 ? 'text-orange-300' : 'text-primary'
+                      index === 0 ? 'text-amber-600 dark:text-amber-300' :
+                      index === 1 ? 'text-slate-500 dark:text-slate-200' :
+                      index === 2 ? 'text-orange-600 dark:text-orange-300' : 'text-primary'
                     }`}>
                       #{index + 1}
                     </span>
                     <div className="text-left">
-                      <div className="text-xl font-bold text-white">{team.code}</div>
-                      <div className="text-sm text-zinc-400">
+                      <div className="text-xl font-bold text-foreground">{team.code}</div>
+                      <div className="text-sm text-muted-foreground">
                         {team.playerCount} players - {team.totalScore.toLocaleString()} total
                       </div>
                     </div>
                   </div>
-                  <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg pts</span>
+                  <span className="text-xl font-bold text-foreground">{team.averageScore.toLocaleString()} avg pts</span>
                 </div>
               ))}
             </div>
@@ -906,11 +948,11 @@ function FinalScreen({
                   <div className="flex items-center gap-4">
                     <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                     <div className="text-left">
-                      <div className="text-xl font-bold text-white">{player.nickname}</div>
-                      {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(player)}</div>}
+                      <div className="text-xl font-bold text-foreground">{player.nickname}</div>
+                      {teamMode && <div className="text-sm text-muted-foreground">{getPlayerTeamCode(player)}</div>}
                     </div>
                   </div>
-                  <span className="text-xl font-bold text-zinc-100">{player.score.toLocaleString()} pts</span>
+                  <span className="text-xl font-bold text-foreground">{player.score.toLocaleString()} pts</span>
                 </div>
               ))}
             </div>

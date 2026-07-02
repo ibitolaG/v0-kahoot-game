@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Users, Trophy, Play, Zap } from 'lucide-react'
 import { Brand } from '@/components/brand'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function HomePage() {
   const [pin, setPin] = useState('')
@@ -23,6 +24,10 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen flex flex-col">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
+
       {/* Hero Section */}
       <section className="flex-1 flex flex-col items-center justify-center px-4 py-12">
         <div className="text-center mb-12 animate-slide-up">

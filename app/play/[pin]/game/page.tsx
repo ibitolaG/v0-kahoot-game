@@ -4,10 +4,11 @@ import { useState, useEffect, use, useCallback, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
-import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle, WifiOff } from 'lucide-react'
+import { Zap, Loader2, Trophy, Clock, CheckCircle, XCircle, WifiOff, Lock } from 'lucide-react'
 import type { Game, Player, Question, QuestionOption } from '@/lib/types'
 import { Brand } from '@/components/brand'
 import { AnswerShape } from '@/components/answer-shape'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { getPlayerTeamCode, getTeamStandings, isTeamMode } from '@/lib/gameplay'
 
 // Retries transient network failures so a dropped connection doesn't lose the answer.
@@ -70,7 +71,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         const parsed = JSON.parse(cached) as { game: Game; player: Player; questions: Question[]; players: Player[] }
         if (!parsed.game || !parsed.player || !parsed.questions?.length) return false
         if (parsed.game.status === 'question') {
-          lastQuestionKeyRef.current = `${parsed.game.current_question_index}:${parsed.game.question_start_time ?? ''}`
+          lastQuestionKeyRef.current = `${parsed.game.current_question_index}`
         }
         setGame(parsed.game)
         setPlayer(parsed.player)
@@ -134,7 +135,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           .order('score', { ascending: false })
 
         if (gameData.status === 'question') {
-          lastQuestionKeyRef.current = `${gameData.current_question_index}:${gameData.question_start_time ?? ''}`
+          lastQuestionKeyRef.current = `${gameData.current_question_index}`
         }
         setGame(gameData)
         setPlayer(playerData)
@@ -169,7 +170,9 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
 
   const applyGameUpdate = useCallback((updatedGame: Game) => {
     if (updatedGame.status === 'question') {
-      const questionKey = `${updatedGame.current_question_index}:${updatedGame.question_start_time ?? ''}`
+      // Key by index only — the host can shift question_start_time mid-question
+      // to shorten the timer, and that must not reset answer state.
+      const questionKey = `${updatedGame.current_question_index}`
       if (lastQuestionKeyRef.current !== questionKey) {
         lastQuestionKeyRef.current = questionKey
         setSelectedOption(null)
@@ -423,8 +426,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               )}
             </div>
           </div>
-          <div className="text-primary font-bold">
-            {player.score.toLocaleString()} pts
+          <div className="flex items-center gap-1">
+            <div className="text-primary font-bold">
+              {player.score.toLocaleString()} pts
+            </div>
+            <ThemeToggle className="h-8 w-8" />
           </div>
         </div>
       </header>
@@ -490,29 +496,21 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
           </div>
         )}
 
-        {game.status === 'question' && hasAnswered && lastAnswer && (
+        {/* No right/wrong reveal here — everyone finds out together on the
+            results screen, Kahoot-style. */}
+        {game.status === 'question' && hasAnswered && (
           <div className="text-center animate-pop-in">
-            {lastAnswer.correct ? (
-              <>
-                <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-green-500 mb-2">Correct!</h2>
-                <p className="text-2xl font-bold">+{lastAnswer.points.toLocaleString()} pts</p>
-              </>
-            ) : (
-              <>
-                <XCircle className="h-20 w-20 text-destructive mx-auto mb-4" />
-                <h2 className="text-3xl font-bold text-destructive mb-2">Wrong!</h2>
-                <p className="text-muted-foreground">Better luck next time</p>
-              </>
-            )}
-          </div>
-        )}
-
-        {game.status === 'question' && hasAnswered && submittingAnswer && !lastAnswer && (
-          <div className="text-center">
-            <Loader2 className="h-16 w-16 animate-spin text-primary mx-auto mb-4" />
-            <h2 className="text-3xl font-bold mb-2">Answer locked in</h2>
-            <p className="text-muted-foreground">Calculating your points...</p>
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 animate-pulse-glow">
+              <Lock className="h-10 w-10 text-primary" />
+            </div>
+            <h2 className="text-3xl font-bold mb-2">Answer locked in!</h2>
+            <p className="text-muted-foreground">
+              {submittingAnswer ? 'Sending your answer...' : "You'll see how you did when the time is up."}
+            </p>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-secondary px-4 py-2">
+              <Clock className="h-4 w-4" />
+              <span className="font-mono font-bold">{timeLeft ?? '--'}</span>
+            </div>
           </div>
         )}
 
@@ -588,7 +586,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         {game.status === 'playing' && (
           <div className="w-full max-w-4xl text-center animate-slide-up">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
-              <Trophy className="h-12 w-12 text-amber-300" />
+              <Trophy className="h-12 w-12 text-amber-600 dark:text-amber-300" />
             </div>
             <h2 className="text-4xl font-black mb-2">Leaderboard Break</h2>
             <p className="text-muted-foreground mb-6">
@@ -616,20 +614,20 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     >
                       <div className="flex items-center gap-4">
                         <span className={`w-12 text-2xl font-black ${
-                          index === 0 ? 'text-amber-300' :
-                          index === 1 ? 'text-slate-200' :
-                          index === 2 ? 'text-orange-300' : 'text-primary'
+                          index === 0 ? 'text-amber-600 dark:text-amber-300' :
+                          index === 1 ? 'text-slate-500 dark:text-slate-200' :
+                          index === 2 ? 'text-orange-600 dark:text-orange-300' : 'text-primary'
                         }`}>
                           #{index + 1}
                         </span>
                         <div className="text-left">
-                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>
+                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-foreground' : 'font-bold text-foreground/90'}`}>
                             {team.code}
                           </div>
-                          <div className="text-sm text-zinc-400">{team.playerCount} players</div>
+                          <div className="text-sm text-muted-foreground">{team.playerCount} players</div>
                         </div>
                       </div>
-                      <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg</span>
+                      <span className="text-xl font-bold text-foreground">{team.averageScore.toLocaleString()} avg</span>
                     </div>
                   ))}
                 </div>
@@ -649,11 +647,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                       <div className="flex items-center gap-4">
                         <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                         <div className="text-left">
-                          <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
-                          {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>}
+                          <div className={`text-xl ${p.id === player.id ? 'font-black text-foreground' : 'font-bold text-foreground/90'}`}>{p.nickname}</div>
+                          {teamMode && <div className="text-sm text-muted-foreground">{getPlayerTeamCode(p)}</div>}
                         </div>
                       </div>
-                      <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
+                      <span className="text-xl font-bold text-foreground">{p.score.toLocaleString()} pts</span>
                     </div>
                   ))}
                 </div>
@@ -665,7 +663,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
         {game.status === 'finished' && (
           <div className="w-full max-w-5xl text-center animate-slide-up">
             <div className="mx-auto mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-amber-400/15 ring-1 ring-amber-300/30">
-              <Trophy className="h-14 w-14 text-amber-300" />
+              <Trophy className="h-14 w-14 text-amber-600 dark:text-amber-300" />
             </div>
             <h2 className="text-5xl font-black mb-3">Game Over!</h2>
 
@@ -689,7 +687,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
             <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_90px_rgba(239,0,0,0.16)]">
               <CardContent className="py-8">
                 <div className="mb-5">
-                  <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-200">
+                  <span className="rounded-full border border-amber-300/40 bg-amber-300/10 px-6 py-2 text-lg font-semibold text-amber-700 dark:text-amber-200">
                     {teamMode
                       ? `Winning Team: ${teamStandings[0]?.code ?? 'TBD'}`
                       : `Winner: ${players[0]?.nickname ?? 'TBD'}`}
@@ -710,11 +708,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     return (
                       <div key={entry.id} className="flex w-36 flex-col items-center text-center">
                         <div className="mb-3">
-                          <div className={`text-3xl font-black ${position === 0 ? 'text-amber-300' : 'text-white'}`}>
+                          <div className={`text-3xl font-black ${position === 0 ? 'text-amber-600 dark:text-amber-300' : 'text-foreground'}`}>
                             {position === 0 ? 'WINNER' : `#${position + 1}`}
                           </div>
-                          <div className="mt-1 text-2xl font-bold text-white">{entry.name}</div>
-                          <div className="text-base text-zinc-300">{entry.detail}</div>
+                          <div className="mt-1 text-2xl font-bold text-foreground">{entry.name}</div>
+                          <div className="text-base text-muted-foreground">{entry.detail}</div>
                         </div>
                         <div className={`flex w-full ${heightsByRank[position]} items-end justify-center rounded-t-3xl bg-gradient-to-b ${stylesByRank[position]} pb-4 shadow-xl animate-podium-rise stagger-${position + 1}`}>
                           <span className="text-5xl font-black">{position + 1}</span>
@@ -746,18 +744,18 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                     >
                       <div className="flex items-center gap-4">
                         <span className={`w-12 text-2xl font-black ${
-                          index === 0 ? 'text-amber-300' :
-                          index === 1 ? 'text-slate-200' :
-                          index === 2 ? 'text-orange-300' : 'text-primary'
+                          index === 0 ? 'text-amber-600 dark:text-amber-300' :
+                          index === 1 ? 'text-slate-500 dark:text-slate-200' :
+                          index === 2 ? 'text-orange-600 dark:text-orange-300' : 'text-primary'
                         }`}>
                           #{index + 1}
                         </span>
                         <div className="text-left">
-                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{team.code}</div>
-                          <div className="text-sm text-zinc-400">{team.playerCount} players</div>
+                          <div className={`text-xl ${team.code === playerTeamCode ? 'font-black text-foreground' : 'font-bold text-foreground/90'}`}>{team.code}</div>
+                          <div className="text-sm text-muted-foreground">{team.playerCount} players</div>
                         </div>
                       </div>
-                      <span className="text-xl font-bold text-zinc-100">{team.averageScore.toLocaleString()} avg</span>
+                      <span className="text-xl font-bold text-foreground">{team.averageScore.toLocaleString()} avg</span>
                     </div>
                   ))}
                 </div>
@@ -777,11 +775,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                       <div className="flex items-center gap-4">
                         <span className="w-12 text-2xl font-black text-primary">#{index + 1}</span>
                         <div className="text-left">
-                          <div className={`text-xl ${p.id === player.id ? 'font-black text-white' : 'font-bold text-zinc-100'}`}>{p.nickname}</div>
-                          {teamMode && <div className="text-sm text-zinc-400">{getPlayerTeamCode(p)}</div>}
+                          <div className={`text-xl ${p.id === player.id ? 'font-black text-foreground' : 'font-bold text-foreground/90'}`}>{p.nickname}</div>
+                          {teamMode && <div className="text-sm text-muted-foreground">{getPlayerTeamCode(p)}</div>}
                         </div>
                       </div>
-                      <span className="text-xl font-bold text-zinc-100">{p.score.toLocaleString()} pts</span>
+                      <span className="text-xl font-bold text-foreground">{p.score.toLocaleString()} pts</span>
                     </div>
                   ))}
                 </div>
@@ -789,10 +787,10 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
                 <div className="mx-auto mt-6 max-w-3xl rounded-2xl border border-primary/30 bg-primary/10 px-5 py-4 text-left">
                   <div className="text-sm font-semibold uppercase tracking-[0.2em] text-primary/80">Your position</div>
                   <div className="mt-2 flex items-center justify-between gap-4">
-                    <span className="text-xl font-bold text-white">
+                    <span className="text-xl font-bold text-foreground">
                       #{players.findIndex(p => p.id === player.id) + 1} of {players.length}
                     </span>
-                    <span className="text-lg font-semibold text-zinc-200">{player.score.toLocaleString()} pts</span>
+                    <span className="text-lg font-semibold text-foreground">{player.score.toLocaleString()} pts</span>
                   </div>
                 </div>
               </CardContent>

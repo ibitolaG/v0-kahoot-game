@@ -23,6 +23,7 @@ import { Plus, Play, Edit2, Trash2, MoreVertical, LogOut, HelpCircle, User as Us
 import type { User } from '@supabase/supabase-js'
 import type { Quiz, Profile, GameMode } from '@/lib/types'
 import { Brand } from '@/components/brand'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 interface DashboardClientProps {
   user: User
@@ -106,6 +107,7 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
             <span className="text-sm text-muted-foreground hidden sm:block">
               {profile?.display_name || user.email}
             </span>
+            <ThemeToggle />
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="h-5 w-5" />
             </Button>
