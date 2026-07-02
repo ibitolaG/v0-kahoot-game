@@ -152,18 +152,20 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {quizzes.map((quiz) => (
-              <Card key={quiz.id} className="bg-card/50 hover:bg-card/70 transition-colors">
+              <Card key={quiz.id} className="bg-card/50 hover:bg-card/70 transition-colors flex h-full flex-col">
                 <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg truncate">{quiz.title}</CardTitle>
-                      <CardDescription className="truncate">
+                      <CardTitle className="text-lg leading-snug break-words line-clamp-2">
+                        {quiz.title}
+                      </CardTitle>
+                      <CardDescription className="mt-1">
                         {quiz.questions[0]?.count || 0} questions
                       </CardDescription>
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="shrink-0">
+                        <Button variant="ghost" size="icon" className="shrink-0 -mr-2 -mt-1">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -185,14 +187,14 @@ export function DashboardClient({ user, quizzes, profile }: DashboardClientProps
                     </DropdownMenu>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex flex-1 flex-col">
                   {quiz.description && (
-                    <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                    <p className="text-sm text-muted-foreground line-clamp-2 break-words mb-4">
                       {quiz.description}
                     </p>
                   )}
                   <Button
-                    className="w-full"
+                    className="w-full mt-auto"
                     onClick={() => setModePickerQuizId(quiz.id)}
                     disabled={loading === quiz.id || (quiz.questions[0]?.count || 0) === 0}
                   >
