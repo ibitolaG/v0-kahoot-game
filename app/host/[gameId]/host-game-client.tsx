@@ -442,7 +442,7 @@ function WaitingScreen({
                 {teamMode ? 'Enter this PIN and your team code to join' : 'Enter this PIN to join'}
               </p>
             </div>
-            {joinUrl && <JoinQrCode url={joinUrl} />}
+            {joinUrl && <JoinQrCode url={joinUrl} pin={pin} />}
           </div>
         </CardContent>
       </Card>
