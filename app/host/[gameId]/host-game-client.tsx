@@ -11,6 +11,7 @@ import type { Game, Player, Question, QuestionOption, Answer } from '@/lib/types
 import { Brand } from '@/components/brand'
 import { AnswerShape } from '@/components/answer-shape'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { JoinQrCode } from '@/components/join-qr-code'
 import { getPlayerTeamCode, getTeamStandings, isTeamMode, type TeamStanding } from '@/lib/gameplay'
 
 interface HostGameClientProps {
@@ -420,21 +421,29 @@ function WaitingScreen({
 }) {
   // Show the real deployment address instead of a hardcoded domain
   const [siteHost, setSiteHost] = useState('')
+  const [joinOrigin, setJoinOrigin] = useState('')
   useEffect(() => {
     setSiteHost(window.location.host)
+    setJoinOrigin(window.location.origin)
   }, [])
+  const joinUrl = joinOrigin ? `${joinOrigin}/play/${pin}` : ''
 
   return (
-    <div className="w-full max-w-2xl text-center animate-slide-up">
+    <div className="w-full max-w-3xl text-center animate-slide-up">
       <Card className="bg-card/50 backdrop-blur animate-pulse-glow mb-8">
-        <CardContent className="py-12">
-          <p className="text-muted-foreground mb-2">{siteHost ? `Join at ${siteHost}` : 'Join with the game PIN'}</p>
-          <h2 className="text-6xl md:text-8xl font-mono font-bold tracking-widest text-primary mb-4">
-            {pin}
-          </h2>
-          <p className="text-muted-foreground">
-            {teamMode ? 'Enter this PIN and your team code to join' : 'Enter this PIN to join'}
-          </p>
+        <CardContent className="py-10">
+          <div className="flex flex-col items-center justify-center gap-8 md:flex-row md:gap-14">
+            <div>
+              <p className="text-muted-foreground mb-2">{siteHost ? `Join at ${siteHost}` : 'Join with the game PIN'}</p>
+              <h2 className="text-6xl md:text-8xl font-mono font-bold tracking-widest text-primary mb-4">
+                {pin}
+              </h2>
+              <p className="text-muted-foreground">
+                {teamMode ? 'Enter this PIN and your team code to join' : 'Enter this PIN to join'}
+              </p>
+            </div>
+            {joinUrl && <JoinQrCode url={joinUrl} />}
+          </div>
         </CardContent>
       </Card>
 
