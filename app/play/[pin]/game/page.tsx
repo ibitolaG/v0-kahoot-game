@@ -404,6 +404,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
   if (!game || !player) return null
   const playerTeamCode = getPlayerTeamCode(player)
   const playerTeamRank = teamStandings.findIndex((team) => team.code === playerTeamCode) + 1
+  const playerRank = players.findIndex(p => p.id === player.id) + 1
   const podiumEntries = teamMode
     ? teamStandings.slice(0, 3).map((team) => ({
         id: team.code,
@@ -593,11 +594,19 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
             )}
 
             <Card className="bg-card/50">
-              <CardContent className="py-6">
-                <div className="text-4xl font-bold text-primary mb-2 text-center">
+              <CardContent className="py-6 text-center">
+                <div className="text-4xl font-bold text-primary mb-2">
                   {player.score.toLocaleString()}
                 </div>
-                <p className="text-muted-foreground text-center">Your total score</p>
+                <p className="text-muted-foreground">Your total score</p>
+                {playerRank > 0 && (
+                  <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-5 py-2">
+                    <Trophy className="h-4 w-4 text-primary" />
+                    <span className="font-bold">
+                      You&apos;re #{playerRank} of {players.length}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -609,9 +618,23 @@ export default function PlayerGamePage({ params }: { params: Promise<{ pin: stri
               <Trophy className="h-12 w-12 text-amber-600 dark:text-amber-300" />
             </div>
             <h2 className="text-4xl font-black mb-2">Leaderboard Break</h2>
-            <p className="text-muted-foreground mb-6">
+            <p className="text-muted-foreground mb-4">
               {teamMode ? 'Team standings first, individual standings just below.' : 'Top players so far.'}
             </p>
+
+            {playerRank > 0 && (
+              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-6 py-3 animate-pop-in">
+                <Trophy className="h-5 w-5 text-primary" />
+                <span className="text-lg font-bold">
+                  You&apos;re #{playerRank} of {players.length}
+                </span>
+                {teamMode && playerTeamRank > 0 && (
+                  <span className="text-sm text-muted-foreground">
+                    &middot; Team {playerTeamCode} #{playerTeamRank}
+                  </span>
+                )}
+              </div>
+            )}
 
             <Card className="border-border/60 bg-gradient-to-b from-card to-card/70 shadow-[0_0_60px_rgba(239,0,0,0.14)]">
               <CardContent className="py-6">

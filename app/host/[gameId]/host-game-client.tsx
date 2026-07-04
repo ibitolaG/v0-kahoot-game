@@ -300,9 +300,11 @@ export function HostGameClient({ initialGame }: HostGameClientProps) {
   useEffect(() => {
     if (game.status !== 'playing') return
 
+    // Longer than the results pause — gives the room time to read the
+    // animated top-10 reveal.
     const timeout = setTimeout(() => {
       void startNextQuestion()
-    }, 5000)
+    }, 12000)
 
     return () => clearTimeout(timeout)
   }, [game.status, game.current_question_index, startNextQuestion])
@@ -735,13 +737,13 @@ function LeaderboardBreakScreen({
   onContinue: () => void
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
-  const topFive = sortedPlayers.slice(0, 5)
+  const topPlayers = sortedPlayers.slice(0, 10)
   const teamStandings = getTeamStandings(players)
   const topFiveTeams = teamStandings.slice(0, 5)
   const checkpoint = Math.min(currentQuestionNumber, totalQuestions)
   // Reveal rows bottom-up so the leader lands last, Kahoot-style
   const revealDelay = (index: number, total: number) => ({
-    animationDelay: `${(total - 1 - index) * 0.35 + 0.2}s`,
+    animationDelay: `${(total - 1 - index) * 0.25 + 0.2}s`,
   })
 
   return (
@@ -800,12 +802,12 @@ function LeaderboardBreakScreen({
 
           <div className="mx-auto max-w-3xl space-y-3">
             <h3 className="text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {teamMode ? 'Individual top 5' : 'Top 5 players'}
+              {teamMode ? 'Individual top 10' : 'Top 10 players'}
             </h3>
-            {topFive.map((player, index) => (
+            {topPlayers.map((player, index) => (
               <div
                 key={player.id}
-                style={revealDelay(index, topFive.length)}
+                style={revealDelay(index, topPlayers.length)}
                 className={`animate-leaderboard-in flex items-center justify-between rounded-2xl border px-5 py-4 ${
                   index === 0
                     ? 'border-amber-300/50 bg-amber-300/15'
@@ -837,7 +839,7 @@ function LeaderboardBreakScreen({
       </Card>
 
       <div className="text-center">
-        <p className="mb-4 text-sm text-muted-foreground">Next question starts automatically in 5 seconds...</p>
+        <p className="mb-4 text-sm text-muted-foreground">Next question starts automatically in 12 seconds...</p>
         <Button size="lg" onClick={onContinue} className="text-lg px-8">
           Continue Quiz
           <ChevronRight className="ml-2 h-5 w-5" />
@@ -857,7 +859,7 @@ function FinalScreen({
   onEnd: () => void
 }) {
   const sortedPlayers = [...players].sort((a, b) => b.score - a.score)
-  const topFive = sortedPlayers.slice(0, 5)
+  const topFive = sortedPlayers.slice(0, 10)
   const teamStandings = getTeamStandings(players)
   const topFiveTeams = teamStandings.slice(0, 5)
   const podiumEntries = teamMode
@@ -952,7 +954,7 @@ function FinalScreen({
 
           <div className="mx-auto mt-8 max-w-3xl">
             <h3 className="mb-4 text-left text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-              {teamMode ? 'Individual top 5' : 'Top 5 players'}
+              {teamMode ? 'Individual top 10' : 'Top 10 players'}
             </h3>
             <div className="space-y-3">
               {topFive.map((player, index) => (
